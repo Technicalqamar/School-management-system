@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo, useCallback, useRef } from 'react';
 import {
   CurrencyDollarIcon, ArrowTrendingUpIcon, ClockIcon,
   UserGroupIcon, MagnifyingGlassIcon, FunnelIcon,
@@ -9,11 +9,8 @@ import CardSection from '../../common/CardSection/CardSection';
 import SelectInput from '../../common/SelectInput/SelectInput';
 import DateInput from '../../common/DateInput/DateInput';
 import Button from '../../common/Button/Button';
-import {
-  studentsWithFeeStatus, recentCollections,
-  monthlyBreakdown,
-} from '../../../data/feeManagement/dummyData';
 import { useSchoolConfig } from '../../../contexts/SchoolConfigContext';
+import feeService from '../../../services/fee/fee.service.js';
 
 const formatCurrency = (val) => `Rs. ${Number(val).toLocaleString()}`;
 
@@ -25,22 +22,10 @@ const CLASS_OPTIONS = [
   '6', '7', '8', '9', '10',
 ];
 
-const toDataClass = (label) => {
-  if (['Montessori', 'Nursery', 'KG1', 'KG2'].includes(label)) return label;
-  if (/^\d+$/.test(label)) return `Class ${label}`;
-  return label;
-};
-
 const MONTHS_ORDER = [
   'January', 'February', 'March', 'April', 'May', 'June',
   'July', 'August', 'September', 'October', 'November', 'December',
 ];
-
-const getFeeTypeAmount = (student, type) => {
-  if (type === 'Admission Fee') return Number(student.admissionFee) || 0;
-  if (type === 'Examination Fee') return Number(student.examFee) || 0;
-  return Number(student.monthlyFee) || 0;
-};
 
 const Reports = () => {
   const { schoolInfo } = useSchoolConfig();
@@ -54,211 +39,36 @@ const Reports = () => {
   const [studentQuery, setStudentQuery] = useState('');
   const [generatedFilters, setGeneratedFilters] = useState(null);
 
-  const currentYear = '2026';
+  const currentYear = schoolInfo?.academicYear?.currentYear || String(new Date().getFullYear());
 
-  const matchedStudents = useMemo(() => {
-    if (!studentQuery.trim()) return [];
-    const q = studentQuery.toLowerCase();
-    return studentsWithFeeStatus.filter(
-      (s) => s.id.toLowerCase().includes(q)
-        || s.name.toLowerCase().includes(q)
-        || (s.fatherName && s.fatherName.toLowerCase().includes(q)),
-    );
-  }, [studentQuery]);
+  const [reportData, setReportData] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [searchResults, setSearchResults] = useState([]);
+  const [searchLoading, setSearchLoading] = useState(false);
+  const [searchError, setSearchError] = useState('');
+  const searchTimerRef = useRef(null);
 
-  const computeSummary = (filters, student) => {
-    const ft = filters?.feeType || 'All Fees';
-    const df = filters?.dateFrom || '';
-    const dt = filters?.dateTo || '';
-    const cls = filters?.scope === 'Class' ? filters?.selectedClass : '';
+  const effectiveYear = reportData?.academicYear || generatedFilters?.academicYear || currentYear;
 
-    let scopedStudents = [...studentsWithFeeStatus];
-    if (student) {
-      scopedStudents = scopedStudents.filter((s) => s.id === student.id);
-    } else if (cls) {
-      const dataClass = toDataClass(cls);
-      scopedStudents = scopedStudents.filter((s) => s.class === dataClass);
-    }
+  const studentReport = useMemo(() => (reportData && scope === 'Student' ? reportData : null), [reportData, scope]);
 
-    let scopedCollections = recentCollections.filter((c) => {
-      if (student) return c.studentId === student.id;
-      if (cls) {
-        const match = scopedStudents.find((s) => s.id === c.studentId);
-        if (!match) return false;
-      }
-      if (df && c.date < df) return false;
-      if (dt && c.date > dt) return false;
-      return true;
-    });
+  const classReport = useMemo(() => (reportData && scope === 'Class' ? reportData : null), [reportData, scope]);
 
-    if (ft !== 'All Fees') {
-      scopedCollections = scopedCollections.filter((c) => c.feeType === ft);
-    }
-
-    let totalExpected = 0;
-    let totalCollected = 0;
-    let totalDue = 0;
-    let paidCount = 0;
-    let pendingCount = 0;
-
-    scopedStudents.forEach((s) => {
-      const expected = ft === 'All Fees'
-        ? (Number(s.monthlyFee) || 0) + (Number(s.admissionFee) || 0) + (Number(s.examFee) || 0)
-        : getFeeTypeAmount(s, ft);
-      const paid = Number(s.totalPaid) || 0;
-      const due = Number(s.remaining) || 0;
-
-      totalExpected += expected;
-      totalCollected += paid;
-      totalDue += due;
-
-      if (due <= 0) paidCount += 1;
-      else pendingCount += 1;
-    });
-
-    return {
-      totalExpected, totalCollected, totalDue,
-      paidStudents: paidCount, pendingStudents: pendingCount,
-      totalTransactions: scopedCollections.length,
-    };
-  };
-
-  const generateStudentReport = (student, filters) => {
-    const year = filters?.academicYear || currentYear;
-    const ft = filters?.feeType || 'All Fees';
-    const df = filters?.dateFrom || '';
-    const dt = filters?.dateTo || '';
-
-    let breakdown = monthlyBreakdown.filter((r) => r.studentId === student.id && r.year === year);
-    if (ft !== 'All Fees') breakdown = breakdown.filter((r) => r.feeType === ft);
-    if (df) breakdown = breakdown.filter((r) => r.date && r.date >= df);
-    if (dt) breakdown = breakdown.filter((r) => r.date && r.date <= dt);
-
-    const monthlyOnly = breakdown.filter((r) => r.feeType === 'Monthly Fee');
-    const paidMonths = monthlyOnly.filter((r) => r.status === 'Paid').map((r) => r.month);
-    const dueMonths = monthlyOnly.filter((r) => r.status === 'Due' || r.status === 'Partially Paid').map((r) => r.month);
-
-    let totalExpected = 0; let totalPaid = 0; let totalDue = 0;
-    let totalDiscount = 0; let totalFine = 0; let totalTransactions = 0;
-
-    breakdown.forEach((r) => {
-      totalExpected += Number(r.expected) || 0;
-      totalPaid += Number(r.paid) || 0;
-      totalDue += Number(r.due) || 0;
-      totalDiscount += Number(r.discount) || 0;
-      totalFine += Number(r.fine) || 0;
-      if (r.paid > 0) totalTransactions += 1;
-    });
-
-    return {
-      student, breakdown, paidMonths, dueMonths,
-      totalExpected, totalPaid, totalDue, totalDiscount,
-      totalFine, totalTransactions,
-    };
-  };
-
-  const generateClassReport = useCallback((className, filters) => {
-    const year = filters?.academicYear || currentYear;
-    const ft = filters?.feeType || 'All Fees';
-    const df = filters?.dateFrom || '';
-    const dt = filters?.dateTo || '';
-
-    const classStudents = studentsWithFeeStatus.filter((s) => s.class === toDataClass(className));
-    const studentBreakdowns = classStudents.map((student) => {
-      let records = monthlyBreakdown.filter((r) => r.studentId === student.id && r.year === year);
-      if (ft !== 'All Fees') records = records.filter((r) => r.feeType === ft);
-      if (df) records = records.filter((r) => r.date && r.date >= df);
-      if (dt) records = records.filter((r) => r.date && r.date <= dt);
-
-      let expected = 0; let collected = 0; let due = 0;
-      records.forEach((r) => {
-        expected += Number(r.expected) || 0;
-        collected += Number(r.paid) || 0;
-        due += Number(r.due) || 0;
-      });
-
-      const monthlyRecords = records.filter((r) => r.feeType === 'Monthly Fee');
-      const paidM = monthlyRecords.filter((r) => r.status === 'Paid').length;
-      const dueM = monthlyRecords.filter((r) => r.status === 'Due' || r.status === 'Partially Paid').length;
-
-      return {
-        ...student, expected, collected, due,
-        paidMonths: paidM, dueMonths: dueM,
-        status: due <= 0 ? 'Paid' : collected > 0 ? 'Partial' : 'Pending',
-      };
-    });
-
-    let totalExpected = 0; let totalCollected = 0; let totalDue = 0;
-    let paidCount = 0; let pendingCount = 0; let totalTransactions = 0;
-
-    studentBreakdowns.forEach((sb) => {
-      totalExpected += sb.expected;
-      totalCollected += sb.collected;
-      totalDue += sb.due;
-      if (sb.status === 'Paid') paidCount += 1;
-      else pendingCount += 1;
-      totalTransactions += (sb.paidMonths + sb.dueMonths);
-    });
-
-    return {
-      className, students: studentBreakdowns,
-      totalStudents: classStudents.length,
-      totalExpected, totalCollected, totalDue,
-      paidStudents: paidCount, pendingStudents: pendingCount,
-      totalTransactions,
-    };
-  }, []);
-
-  const generateOverallReport = useCallback((filters) => {
-    const year = filters?.academicYear || currentYear;
-    const ft = filters?.feeType || 'All Fees';
-    const df = filters?.dateFrom || '';
-    const dt = filters?.dateTo || '';
-
-    const classSummaries = CLASS_OPTIONS.map((cls) => {
-      const result = generateClassReport(cls, { ...filters, academicYear: year, feeType: ft, dateFrom: df, dateTo: dt });
-      return { className: cls, ...result };
-    }).filter((cs) => cs.totalStudents > 0);
-
-    let totalStudents = 0; let totalExpected = 0; let totalCollected = 0;
-    let totalDue = 0; let paidStudents = 0; let pendingStudents = 0;
-    let totalTransactions = 0;
-
-    classSummaries.forEach((cs) => {
-      totalStudents += cs.totalStudents;
-      totalExpected += cs.totalExpected;
-      totalCollected += cs.totalCollected;
-      totalDue += cs.totalDue;
-      paidStudents += cs.paidStudents;
-      pendingStudents += cs.pendingStudents;
-      totalTransactions += cs.totalTransactions;
-    });
-
-    return {
-      classSummaries, totalStudents, totalExpected, totalCollected,
-      totalDue, paidStudents, pendingStudents, totalTransactions,
-    };
-  }, []);
-
-  const studentReport = useMemo(() => {
-    if (!generatedFilters || generatedFilters.scope !== 'Student' || !selectedStudent) return null;
-    return generateStudentReport(selectedStudent, generatedFilters);
-  }, [generatedFilters, selectedStudent]);
-
-  const classReport = useMemo(() => {
-    if (!generatedFilters || generatedFilters.scope !== 'Class' || !generatedFilters.selectedClass) return null;
-    return generateClassReport(generatedFilters.selectedClass, generatedFilters);
-  }, [generatedFilters]);
-
-  const overallReport = useMemo(() => {
-    if (!generatedFilters || generatedFilters.scope !== 'Overall') return null;
-    return generateOverallReport(generatedFilters);
-  }, [generatedFilters]);
+  const overallReport = useMemo(() => (reportData && scope === 'Overall' ? reportData : null), [reportData, scope]);
 
   const summary = useMemo(() => {
-    if (!generatedFilters) return null;
-    return computeSummary(generatedFilters, selectedStudent);
-  }, [generatedFilters, selectedStudent]);
+    if (!reportData) return null;
+
+    return {
+      totalExpected: reportData.totalExpected || 0,
+      totalCollected: reportData.totalCollected ?? reportData.totalPaid ?? 0,
+      totalDue: reportData.totalDue || 0,
+      paidStudents: reportData.paidStudents || 0,
+      pendingStudents: reportData.pendingStudents || 0,
+      totalTransactions: reportData.totalTransactions || 0,
+    };
+  }, [reportData]);
 
   const handleScopeChange = (e) => {
     const v = e.target.value;
@@ -266,21 +76,68 @@ const Reports = () => {
     setSelectedClass('');
     setSelectedStudent(null);
     setStudentQuery('');
+    setSearchResults([]);
+    setSearchError('');
+    setError('');
     setGeneratedFilters(null);
+    setReportData(null);
   };
 
   const handleFilterChange = (setter) => (e) => {
     setter(e.target.value);
+    setError('');
     setGeneratedFilters(null);
+    setReportData(null);
   };
 
   const handleStudentSelect = (student) => {
     setSelectedStudent(student);
     setStudentQuery('');
+    setSearchResults([]);
+    setSearchError('');
+    setError('');
     setGeneratedFilters(null);
+    setReportData(null);
+  };
+
+  const handleStudentQueryChange = (e) => {
+    const query = e.target.value;
+    setStudentQuery(query);
+    setError('');
+    setGeneratedFilters(null);
+    setReportData(null);
+
+    if (searchTimerRef.current) {
+      clearTimeout(searchTimerRef.current);
+    }
+
+    if (!query.trim()) {
+      setSearchResults([]);
+      setSearchLoading(false);
+      setSearchError('');
+      return;
+    }
+
+    setSearchLoading(true);
+
+    searchTimerRef.current = setTimeout(async () => {
+      try {
+        const response = await feeService.searchFeeReportStudents(query.trim());
+        setSearchResults(response?.data?.students || []);
+        setSearchError('');
+      } catch (searchErr) {
+        setSearchError(searchErr?.response?.data?.message || 'Student search failed');
+        setSearchResults([]);
+      } finally {
+        setSearchLoading(false);
+      }
+    }, 300);
   };
 
   const handleReset = () => {
+    if (searchTimerRef.current) {
+      clearTimeout(searchTimerRef.current);
+    }
     setScope('Overall');
     setAcademicYear('');
     setFeeType('');
@@ -289,30 +146,68 @@ const Reports = () => {
     setSelectedClass('');
     setSelectedStudent(null);
     setStudentQuery('');
+    setSearchResults([]);
+    setSearchError('');
+    setError('');
+    setLoading(false);
     setGeneratedFilters(null);
+    setReportData(null);
   };
 
-  const handleGenerate = () => {
-    setGeneratedFilters({
-      scope, academicYear, feeType, dateFrom, dateTo, selectedClass, selectedStudent,
-    });
+  const handleGenerate = async () => {
+    if (scope === 'Student' && !selectedStudent) {
+      setError('Please search and select a student before generating the report.');
+      return;
+    }
+
+    if (scope === 'Class' && !selectedClass) {
+      setError('Please select a class before generating the report.');
+      return;
+    }
+
+    setLoading(true);
+    setError('');
+
+    try {
+      const params = {
+        scope,
+        feeType: feeType || 'All Fees',
+        ...(academicYear ? { academicYear } : {}),
+        ...(dateFrom ? { dateFrom } : {}),
+        ...(dateTo ? { dateTo } : {}),
+        ...(scope === 'Class' && selectedClass ? { className: selectedClass } : {}),
+        ...(scope === 'Student' && selectedStudent ? { studentId: selectedStudent._id } : {}),
+      };
+
+      const response = await feeService.generateReport(params);
+      const report = response?.data?.report;
+
+      if (!report) {
+        throw new Error('No report data returned from the server');
+      }
+
+      setGeneratedFilters({
+        scope, academicYear, feeType: feeType || 'All Fees', dateFrom, dateTo, selectedClass, selectedStudent,
+      });
+      setReportData(report);
+    } catch (generateError) {
+      setError(generateError?.response?.data?.message || generateError?.message || 'Failed to generate report. Please try again.');
+      setReportData(null);
+      setGeneratedFilters(null);
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const getReportData = useCallback(() => {
-    if (!generatedFilters) return null;
-    if (generatedFilters.scope === 'Student' && studentReport) return studentReport;
-    if (generatedFilters.scope === 'Class' && classReport) return classReport;
-    if (generatedFilters.scope === 'Overall' && overallReport) return overallReport;
-    return null;
-  }, [generatedFilters, studentReport, classReport, overallReport]);
+  const getReportData = useCallback(() => reportData, [reportData]);
 
   const buildReportHtml = useCallback(() => {
     const reportData = getReportData();
     if (!reportData) return '';
     const sName = schoolInfo?.name || 'School';
     const today = new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
-    const year = generatedFilters?.academicYear || currentYear;
-    const fType = generatedFilters?.feeType || 'All Fees';
+    const year = reportData?.academicYear || generatedFilters?.academicYear || currentYear;
+    const fType = reportData?.feeType || generatedFilters?.feeType || 'All Fees';
     const dateRange = (generatedFilters?.dateFrom || generatedFilters?.dateTo)
       ? `${generatedFilters?.dateFrom || 'Start'} to ${generatedFilters?.dateTo || 'End'}`
       : 'All Dates';
@@ -576,7 +471,7 @@ const Reports = () => {
       document.body.appendChild(el);
       await html2pdf().set({
         margin: [10, 10, 10, 10],
-        filename: `${generatedFilters?.scope || 'Report'}-Report-${generatedFilters?.academicYear || currentYear}.pdf`,
+        filename: `${generatedFilters?.scope || 'Report'}-Report-${reportData?.academicYear || academicYear || currentYear}.pdf`,
         image: { type: 'jpeg', quality: 0.98 },
         html2canvas: { scale: 2, useCORS: true, logging: false },
         jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
@@ -585,7 +480,7 @@ const Reports = () => {
     } catch {
       // PDF generation failed silently
     }
-  }, [getReportData, buildReportHtml, generatedFilters, currentYear]);
+  }, [getReportData, buildReportHtml, generatedFilters, currentYear, academicYear]);
 
   const renderStudentReport = () => {
     if (!studentReport) return null;
@@ -601,7 +496,7 @@ const Reports = () => {
               { label: 'Student ID', value: student.id },
               { label: 'Student Name', value: student.name },
               { label: 'Class', value: student.class },
-              { label: 'Academic Year', value: generatedFilters?.academicYear || currentYear },
+              { label: 'Academic Year', value: effectiveYear },
             ].map((item) => (
               <div key={item.label} className="bg-gray-50 dark:bg-gray-900/50 rounded-lg p-4">
                 <p className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">{item.label}</p>
@@ -734,7 +629,7 @@ const Reports = () => {
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4 mb-6">
             {[
               { label: 'Class Name', value: className },
-              { label: 'Academic Year', value: generatedFilters?.academicYear || currentYear },
+              { label: 'Academic Year', value: effectiveYear },
               { label: 'Total Students', value: totalStudents },
               { label: 'Fee Type', value: generatedFilters?.feeType || 'All Fees' },
             ].map((item) => (
@@ -991,7 +886,7 @@ const Reports = () => {
                 </div>
                 <button
                   type="button"
-                  onClick={() => { setSelectedStudent(null); setGeneratedFilters(null); }}
+                  onClick={() => { setSelectedStudent(null); setStudentQuery(''); setSearchResults([]); setSearchError(''); setError(''); setGeneratedFilters(null); setReportData(null); }}
                   className="text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-200 text-xs font-medium cursor-pointer"
                 >Change</button>
               </div>
@@ -1002,15 +897,19 @@ const Reports = () => {
                   type="text"
                   placeholder="Search by Student ID or Name..."
                   value={studentQuery}
-                  onChange={(e) => setStudentQuery(e.target.value)}
+                  onChange={handleStudentQueryChange}
                   className="w-full pl-9 pr-4 py-2.5 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm text-gray-700 dark:text-gray-200 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
                 />
                 {studentQuery && (
                   <div className="absolute z-10 mt-1 w-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg max-h-60 overflow-y-auto">
-                    {matchedStudents.length === 0 ? (
+                    {searchLoading ? (
+                      <div className="px-4 py-6 text-center"><p className="text-sm text-gray-500 dark:text-gray-400">Searching...</p></div>
+                    ) : searchError ? (
+                      <div className="px-4 py-6 text-center"><p className="text-sm text-red-500 dark:text-red-400">{searchError}</p></div>
+                    ) : searchResults.length === 0 ? (
                       <div className="px-4 py-6 text-center"><p className="text-sm text-gray-500 dark:text-gray-400">No student found matching your search.</p></div>
                     ) : (
-                      matchedStudents.map((s) => (
+                      searchResults.map((s) => (
                         <button
                           key={s.id}
                           type="button"
@@ -1043,14 +942,36 @@ const Reports = () => {
             >
               <ArrowPathIcon className="h-4 w-4" /> Reset
             </button>
-            <Button onClick={handleGenerate} className="!w-auto">
+            <Button onClick={handleGenerate} loading={loading} className="!w-auto">
               <FunnelIcon className="h-4 w-4 mr-2" /> Generate Report
             </Button>
           </div>
         </div>
       </CardSection>
 
-      {summary && (
+      {loading && (
+        <CardSection title="Report Summary">
+          <div className="text-center py-12">
+            <div className="mx-auto mb-4 h-10 w-10 rounded-full border-4 border-blue-200 dark:border-blue-900/30 border-t-blue-600 dark:border-t-blue-400 animate-spin" />
+            <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">Generating Report</h3>
+            <p className="text-sm text-gray-500 dark:text-gray-400">Please wait while your report is being prepared...</p>
+          </div>
+        </CardSection>
+      )}
+
+      {!loading && error && (
+        <CardSection title="Report Summary">
+          <div className="text-center py-12">
+            <div className="mx-auto mb-4 h-12 w-12 rounded-full bg-red-100 dark:bg-red-900/20 flex items-center justify-center">
+              <ExclamationCircleIcon className="h-6 w-6 text-red-500 dark:text-red-400" />
+            </div>
+            <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">Report Generation Failed</h3>
+            <p className="text-sm text-red-500 dark:text-red-400 max-w-md mx-auto">{error}</p>
+          </div>
+        </CardSection>
+      )}
+
+      {!loading && !error && summary && (
         <>
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
             {[
@@ -1089,7 +1010,7 @@ const Reports = () => {
                 </div>
                 <div className="bg-gray-50 dark:bg-gray-900/50 rounded-lg p-4">
                   <p className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Academic Year</p>
-                  <p className="text-sm font-semibold text-gray-900 dark:text-white mt-1">{generatedFilters?.academicYear || currentYear}</p>
+                  <p className="text-sm font-semibold text-gray-900 dark:text-white mt-1">{effectiveYear}</p>
                 </div>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
@@ -1163,7 +1084,7 @@ const Reports = () => {
         </>
       )}
 
-      {!generatedFilters && (
+      {!loading && !error && !generatedFilters && (
         <CardSection title="Report Summary">
           <div className="text-center py-12">
             <div className="flex justify-center mb-4">

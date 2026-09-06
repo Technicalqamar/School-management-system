@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { PlusIcon } from '@heroicons/react/24/outline';
 import toast from 'react-hot-toast';
 import SearchInput from '../../common/SearchInput/SearchInput';
@@ -9,28 +9,18 @@ import SelectInput from '../../common/SelectInput/SelectInput';
 import Input from '../../common/Input/Input';
 import Button from '../../common/Button/Button';
 import ConfirmationModal from '../../common/ConfirmationModal/ConfirmationModal';
+import feeService from '../../../services/fee/fee.service';
 
-const CLASS_OPTIONS = ['Montessori', 'Nursery', 'KG1', 'KG2', 'Class 1', 'Class 2', 'Class 3', 'Class 4', 'Class 5', 'Class 6', 'Class 7', 'Class 8', 'Class 9', 'Class 10'];
-
-const initialStructures = [
-  { id: 1, className: 'Nursery', monthlyFee: 3000, admissionFee: 10000, examFee: 2000, status: 'Active' },
-  { id: 2, className: 'Montessori', monthlyFee: 3500, admissionFee: 12000, examFee: 2500, status: 'Active' },
-  { id: 3, className: 'Class 1', monthlyFee: 4000, admissionFee: 15000, examFee: 3000, status: 'Active' },
-  { id: 4, className: 'Class 2', monthlyFee: 4500, admissionFee: 15000, examFee: 3000, status: 'Active' },
-  { id: 5, className: 'Class 3', monthlyFee: 5000, admissionFee: 15000, examFee: 3500, status: 'Active' },
-  { id: 6, className: 'Class 4', monthlyFee: 5500, admissionFee: 18000, examFee: 3500, status: 'Active' },
-  { id: 7, className: 'Class 5', monthlyFee: 6000, admissionFee: 18000, examFee: 4000, status: 'Active' },
-  { id: 8, className: 'Class 6', monthlyFee: 6500, admissionFee: 20000, examFee: 4000, status: 'Active' },
-  { id: 9, className: 'Class 7', monthlyFee: 7000, admissionFee: 20000, examFee: 4500, status: 'Active' },
-  { id: 10, className: 'Class 8', monthlyFee: 7500, admissionFee: 22000, examFee: 4500, status: 'Inactive' },
-  { id: 11, className: 'Class 9', monthlyFee: 8000, admissionFee: 22000, examFee: 5000, status: 'Active' },
-];
+const CLASS_OPTIONS = ['Montessori', 'Nursery', 'KG1', 'KG2', '1', '2', '3', '4', '5', '6', '7', '8', '9', '10'];
 
 const initialForm = { className: '', monthlyFee: '', admissionFee: '', examFee: '', status: 'Active' };
 
 const FeeStructure = ({ onDataChange }) => {
   const [search, setSearch] = useState('');
-  const [data, setData] = useState(initialStructures);
+  const [data, setData] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [showModal, setShowModal] = useState(false);
   const [showViewModal, setShowViewModal] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
@@ -39,6 +29,23 @@ const FeeStructure = ({ onDataChange }) => {
   const [deleteItem, setDeleteItem] = useState(null);
   const [form, setForm] = useState(initialForm);
   const [errors, setErrors] = useState({});
+
+  const fetchStructures = async () => {
+    try {
+      const result = await feeService.getAllFeeStructures();
+      setData(result.data?.structures || []);
+    } catch (err) {
+      const msg = err.response?.data?.message || 'Failed to load fee structures';
+      toast.error(msg);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    fetchStructures();
+  }, []);
 
   const formatCurrency = (val) => `Rs. ${Number(val).toLocaleString()}`;
 
@@ -64,8 +71,9 @@ const FeeStructure = ({ onDataChange }) => {
     return Object.keys(newErrors).length === 0;
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!validate()) return;
+    setSaving(true);
     const structure = {
       className: form.className,
       monthlyFee: Number(form.monthlyFee),
@@ -73,15 +81,24 @@ const FeeStructure = ({ onDataChange }) => {
       examFee: Number(form.examFee),
       status: form.status,
     };
-    if (editItem) {
-      setData((prev) => prev.map((item) => (item.id === editItem.id ? { ...item, ...structure } : item)));
-      toast.success('Fee structure updated successfully');
-    } else {
-      setData((prev) => [...prev, { id: Date.now(), ...structure }]);
-      toast.success('Fee structure added successfully');
+    try {
+      if (editItem) {
+        await feeService.updateFeeStructure(editItem._id, structure);
+        toast.success('Fee structure updated successfully');
+      } else {
+        await feeService.createFeeStructure(structure);
+        toast.success('Fee structure added successfully');
+      }
+      closeModal();
+      onDataChange?.();
+      setLoading(true);
+      await fetchStructures();
+    } catch (err) {
+      const msg = err.response?.data?.message || (editItem ? 'Failed to update fee structure' : 'Failed to add fee structure');
+      toast.error(msg);
+    } finally {
+      setSaving(false);
     }
-    closeModal();
-    onDataChange?.();
   };
 
   const openAdd = () => {
@@ -121,12 +138,23 @@ const FeeStructure = ({ onDataChange }) => {
     setShowDeleteModal(true);
   };
 
-  const confirmDelete = () => {
-    setData((prev) => prev.filter((item) => item.id !== deleteItem.id));
-    setShowDeleteModal(false);
-    setDeleteItem(null);
-    toast.success('Fee structure deleted successfully');
-    onDataChange?.();
+  const confirmDelete = async () => {
+    if (!deleteItem) return;
+    setDeleting(true);
+    try {
+      await feeService.deleteFeeStructure(deleteItem._id);
+      toast.success('Fee structure deleted successfully');
+      setShowDeleteModal(false);
+      setDeleteItem(null);
+      onDataChange?.();
+      setLoading(true);
+      await fetchStructures();
+    } catch (err) {
+      const msg = err.response?.data?.message || 'Failed to delete fee structure';
+      toast.error(msg);
+    } finally {
+      setDeleting(false);
+    }
   };
 
   const tableColumns = [
@@ -179,10 +207,18 @@ const FeeStructure = ({ onDataChange }) => {
       </div>
 
       <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-4">
-        <div className="max-w-sm mb-4">
-          <SearchInput placeholder="Search by class..." value={search} onChange={setSearch} />
-        </div>
-        <Table columns={tableColumns} data={filtered} renderRow={renderRow} />
+        {loading ? (
+          <div className="text-center py-16 text-gray-400 dark:text-gray-500">
+            <p className="text-sm">Loading fee structures...</p>
+          </div>
+        ) : (
+          <>
+            <div className="max-w-sm mb-4">
+              <SearchInput placeholder="Search by class..." value={search} onChange={setSearch} />
+            </div>
+            <Table columns={tableColumns} data={filtered} renderRow={renderRow} />
+          </>
+        )}
       </div>
 
       <Modal
@@ -250,8 +286,8 @@ const FeeStructure = ({ onDataChange }) => {
         />
 
         <div className="flex gap-3 mt-6">
-          <Button variant="secondary" onClick={closeModal}>Cancel</Button>
-          <Button onClick={handleSave}>{editItem ? 'Update Structure' : 'Add Structure'}</Button>
+          <Button variant="secondary" onClick={closeModal} disabled={saving}>Cancel</Button>
+          <Button onClick={handleSave} loading={saving}>{editItem ? 'Update Structure' : 'Add Structure'}</Button>
         </div>
       </Modal>
 
@@ -302,6 +338,7 @@ const FeeStructure = ({ onDataChange }) => {
         message={`Are you sure you want to delete the fee structure for class "${deleteItem?.className}"? This action cannot be undone.`}
         confirmLabel="Delete"
         variant="danger"
+        loading={deleting}
         onConfirm={confirmDelete}
       />
     </div>

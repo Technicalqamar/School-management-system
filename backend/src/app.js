@@ -19,6 +19,11 @@ import studentAttendanceRoutes from './routes/studentAttendance.routes.js';
 import eventRoutes from './routes/event.routes.js';
 import holidayRoutes from './routes/holiday.routes.js';
 import eventGalleryRoutes from './routes/eventGallery.routes.js';
+import feeStructureRoutes from './routes/feeStructure.routes.js';
+import feeCollectionRoutes from './routes/feeCollection.routes.js';
+import feeOutstandingRoutes from './routes/feeOutstanding.routes.js';
+import feeReportRoutes from './routes/feeReport.routes.js';
+import feeDashboardRoutes from './routes/feeDashboard.routes.js';
 import { errorHandler } from './middlewares/error.middleware.js';
 
 dotenv.config();
@@ -64,6 +69,11 @@ app.use('/api/v1/student-attendance', studentAttendanceRoutes);
 app.use('/api/v1/events', eventRoutes);
 app.use('/api/v1/holidays', holidayRoutes);
 app.use('/api/v1/event-gallery', eventGalleryRoutes);
+app.use('/api/v1/fees/structures', feeStructureRoutes);
+app.use('/api/v1/fees/collections', feeCollectionRoutes);
+app.use('/api/v1/fees/outstanding-dues', feeOutstandingRoutes);
+app.use('/api/v1/fees/reports', feeReportRoutes);
+app.use('/api/v1/fees/dashboard', feeDashboardRoutes);
 
 // Health check
 app.get('/', (req, res) => {

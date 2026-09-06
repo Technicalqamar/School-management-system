@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect, useCallback } from 'react';
 import { PrinterIcon, CurrencyRupeeIcon, ExclamationTriangleIcon, MagnifyingGlassIcon, XMarkIcon } from '@heroicons/react/24/outline';
 import toast from 'react-hot-toast';
 import Table from '../../common/Table/Table';
@@ -6,8 +6,10 @@ import Button from '../../common/Button/Button';
 import Modal from '../../common/Modal/Modal';
 import Input from '../../common/Input/Input';
 import SelectInput from '../../common/SelectInput/SelectInput';
-import { studentsWithFeeStatus, outstandingDues, recentCollections, paymentMethods } from '../../../data/feeManagement/dummyData';
+import feeService from '../../../services/fee/fee.service';
 import { useSchoolConfig } from '../../../contexts/SchoolConfigContext';
+
+const PAYMENT_METHODS = ['Cash', 'Bank Transfer', 'Online Payment'];
 
 const formatCurrency = (val) => `Rs. ${Number(val || 0).toLocaleString()}`;
 
@@ -36,47 +38,46 @@ const OutstandingDues = () => {
   const [showReceiptModal, setShowReceiptModal] = useState(false);
   const [receiptData, setReceiptData] = useState(null);
 
-  const studentsWithDues = useMemo(() => {
-    const duesMap = {};
+  const [studentsWithDues, setStudentsWithDues] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [paying, setPaying] = useState(false);
 
-    outstandingDues.forEach((d) => {
-      if (d.remaining <= 0) return;
-      if (!duesMap[d.studentId]) {
-        duesMap[d.studentId] = { studentId: d.studentId, studentName: d.studentName, dues: [] };
-      }
-      duesMap[d.studentId].dues.push(d);
-    });
+  useEffect(() => {
+    let cancelled = false;
 
-    recentCollections.forEach((r) => {
-      const remaining = r.amount - r.totalPaid;
-      if (remaining <= 0) return;
-      if (!duesMap[r.studentId]) {
-        duesMap[r.studentId] = { studentId: r.studentId, studentName: r.studentName, dues: [] };
-      }
-      duesMap[r.studentId].dues.push({
-        id: r.id,
-        studentId: r.studentId,
-        studentName: r.studentName,
-        feeType: r.feeType,
-        month: r.month,
-        exam: r.exam,
-        amount: r.amount,
-        discount: r.discount,
-        fine: r.fine,
-        totalPaid: r.totalPaid,
-        remaining,
-        status: r.status === 'Pending' ? 'Unpaid' : 'Partial',
+    feeService.getOutstandingDues()
+      .then((res) => {
+        if (cancelled) return;
+        setStudentsWithDues(res.data?.entries || []);
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        toast.error(err?.response?.data?.message || 'Failed to load outstanding dues');
+        setStudentsWithDues([]);
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
       });
-    });
 
-    return Object.values(duesMap).map((entry) => {
-      const student = studentsWithFeeStatus.find((s) => s.id === entry.studentId);
-      return {
-        ...entry,
-        student,
-        totalOutstanding: entry.dues.reduce((sum, d) => sum + d.remaining, 0),
-      };
-    }).filter((entry) => entry.student && entry.totalOutstanding > 0);
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const refreshDues = useCallback(async () => {
+    try {
+      const res = await feeService.getOutstandingDues();
+      const entries = res.data?.entries || [];
+      setStudentsWithDues(entries);
+
+      setSelectedStudent((current) => {
+        if (!current) return current;
+        const updated = entries.find((entry) => entry.studentId === current.studentId);
+        return updated || null;
+      });
+    } catch (err) {
+      toast.error(err?.response?.data?.message || 'Failed to refresh outstanding dues');
+    }
   }, []);
 
   const filteredStudents = useMemo(() => {
@@ -140,52 +141,63 @@ const OutstandingDues = () => {
     return Object.keys(errs).length === 0;
   };
 
-  const handlePayDue = () => {
+  const handlePayDue = async () => {
     if (!validatePay()) return;
 
     const paidAmount = Number(payAmount);
     const discount = Number(payDiscount || 0);
     const fine = Number(payFine || 0);
-    const newRemaining = payDue.remaining - paidAmount;
+    const student = selectedStudent.student;
 
-    const receipt = {
-      id: `DUE-REC-${new Date().getFullYear()}-${String(Math.floor(Math.random() * 9000) + 1000)}`,
-      date: new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }),
-      studentId: selectedStudent.student.id,
-      studentName: selectedStudent.student.name,
-      fatherName: selectedStudent.student.fatherName,
-      className: selectedStudent.student.class,
-      feeType: payDue.feeType,
-      month: payDue.month,
-      exam: payDue.exam,
-      originalAmount: payDue.amount,
-      discount,
-      fine,
-      totalPayable: payDue.amount - discount + fine,
-      amountPaid: paidAmount,
-      remaining: newRemaining > 0 ? newRemaining : 0,
-      paymentMethod: payMethod,
-      paymentAgainst: `Previous Due (${payDue.feeType} - ${payDue.month}${payDue.exam ? ` / ${payDue.exam}` : ''})`,
-    };
+    setPaying(true);
 
-    setReceiptData(receipt);
-    setShowReceiptModal(true);
-    closePayModal();
+    try {
+      const res = await feeService.collectFee({
+        studentId: student._id,
+        feeType: payDue.feeType,
+        month: payDue.month,
+        exam: payDue.exam || null,
+        discount,
+        lateFine: fine,
+        amountPaid: paidAmount,
+        paymentMethod: payMethod,
+      });
 
-    const dueIdx = selectedStudent.dues.findIndex((d) => d.id === payDue.id);
-    if (dueIdx !== -1) {
-      const updatedDues = [...selectedStudent.dues];
-      updatedDues[dueIdx] = {
-        ...updatedDues[dueIdx],
-        totalPaid: updatedDues[dueIdx].totalPaid + paidAmount,
-        remaining: updatedDues[dueIdx].remaining - paidAmount,
-        status: updatedDues[dueIdx].remaining - paidAmount <= 0 ? 'Paid' : 'Partial',
+      const payment = res?.data?.payment || {};
+
+      const receipt = {
+        id: payment.receiptId || `DUE-REC-${Date.now()}`,
+        date: new Date(payment.paymentDate || Date.now()).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }),
+        studentId: payment.studentId || student.id,
+        studentName: payment.studentName || student.name,
+        fatherName: payment.fatherName || student.fatherName,
+        className: payment.className || student.class,
+        feeType: payDue.feeType,
+        month: payDue.month,
+        exam: payDue.exam,
+        originalAmount: Number(payment.baseAmount) || payDue.amount,
+        discount: Number(payment.discount) || discount,
+        fine: Number(payment.lateFine) || fine,
+        totalPayable: Number(payment.totalPayable) || (payDue.amount - discount + fine),
+        amountPaid: Number(payment.amountPaid) || paidAmount,
+        remaining: payment.remainingAmount !== undefined && payment.remainingAmount !== null
+          ? Math.max(0, Number(payment.remainingAmount))
+          : Math.max(0, payDue.remaining - paidAmount),
+        paymentMethod: payment.paymentMethod || payMethod,
+        paymentAgainst: `Previous Due (${payDue.feeType} - ${payDue.month}${payDue.exam ? ` / ${payDue.exam}` : ''})`,
       };
-      const newTotal = updatedDues.reduce((sum, d) => sum + d.remaining, 0);
-      setSelectedStudent({ ...selectedStudent, dues: updatedDues, totalOutstanding: newTotal });
-    }
 
-    toast.success(`Payment of ${formatCurrency(paidAmount)} recorded against previous due`);
+      setReceiptData(receipt);
+      setShowReceiptModal(true);
+      closePayModal();
+      toast.success(`Payment of ${formatCurrency(paidAmount)} recorded against previous due`);
+
+      await refreshDues();
+    } catch (err) {
+      toast.error(err?.response?.data?.message || 'Payment failed. Please try again.');
+    } finally {
+      setPaying(false);
+    }
   };
 
   const openBillModal = () => {
@@ -318,7 +330,12 @@ const OutstandingDues = () => {
 
       {!selectedStudent && (
         <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-4">
-          {studentsWithDues.length === 0 ? (
+          {loading ? (
+            <div className="py-12 text-center">
+              <div className="animate-spin h-8 w-8 border-2 border-blue-500 border-t-transparent rounded-full mx-auto mb-3" />
+              <p className="text-gray-500 dark:text-gray-400 text-sm">Loading outstanding dues...</p>
+            </div>
+          ) : studentsWithDues.length === 0 ? (
             <div className="py-12 text-center">
               <ExclamationTriangleIcon className="h-12 w-12 text-gray-300 dark:text-gray-600 mx-auto mb-3" />
               <p className="text-gray-500 dark:text-gray-400 text-sm">No outstanding dues found</p>
@@ -542,7 +559,7 @@ const OutstandingDues = () => {
                 name="paymentMethod"
                 value={payMethod}
                 onChange={(e) => { setPayMethod(e.target.value); if (payErrors.method) setPayErrors((p) => ({ ...p, method: '' })); }}
-                options={paymentMethods}
+                options={PAYMENT_METHODS}
                 placeholder="Select method"
                 required
               />
@@ -562,7 +579,9 @@ const OutstandingDues = () => {
 
             <div className="flex gap-3 pt-1">
               <Button variant="secondary" onClick={closePayModal} className="flex-1">Cancel</Button>
-              <Button onClick={handlePayDue} className="flex-1">Confirm Payment</Button>
+              <Button onClick={handlePayDue} disabled={paying} className="flex-1">
+                {paying ? 'Processing...' : 'Confirm Payment'}
+              </Button>
             </div>
           </div>
         )}

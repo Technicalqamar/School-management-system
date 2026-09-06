@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { MagnifyingGlassIcon, CheckCircleIcon, CurrencyRupeeIcon } from '@heroicons/react/24/outline';
 import toast from 'react-hot-toast';
 import Table from '../../common/Table/Table';
@@ -6,31 +6,42 @@ import Button from '../../common/Button/Button';
 import Modal from '../../common/Modal/Modal';
 import Input from '../../common/Input/Input';
 import SelectInput from '../../common/SelectInput/SelectInput';
-import { studentsWithFeeStatus, feeStructures, paymentMethods, months, exams } from '../../../data/feeManagement/dummyData';
+import feeService from '../../../services/fee/fee.service';
+import studentService from '../../../services/student/student.service';
+import { useSchoolConfig } from '../../../contexts/SchoolConfigContext';
 
-const FEE_TYPES = ['Monthly Fee', 'Admission Fee', 'Exam Fee'];
+const FEE_TYPES = ['Monthly Fee', 'Admission Fee', 'Examination Fee'];
+
+const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+
+const EXAMS = ['First Term', 'Mid Term', 'Final Term'];
+
+const PAYMENT_METHODS = ['Cash', 'Bank Transfer', 'Online Payment'];
+
+const CLASS_TO_FEE_CLASS = {
+  Montessori: 'Montessori',
+  Nursery: 'Nursery',
+  'KG 1': 'KG1',
+  'KG 2': 'KG2',
+  'Class 1': '1',
+  'Class 2': '2',
+  'Class 3': '3',
+  'Class 4': '4',
+  'Class 5': '5',
+  'Class 6': '6',
+  'Class 7': '7',
+  'Class 8': '8',
+  'Class 9': '9',
+  'Class 10': '10',
+};
+
+const FEE_TYPE_FIELD = {
+  'Monthly Fee': 'monthlyFee',
+  'Admission Fee': 'admissionFee',
+  'Examination Fee': 'examFee',
+};
 
 const formatCurrency = (val) => `Rs. ${Number(val || 0).toLocaleString()}`;
-
-const getFeeAmount = (className, feeType) => {
-  if (feeType === 'Admission Fee') {
-    const found = feeStructures.find((f) => f.feeType === 'Admission Fee' && f.className === 'All Classes' && f.status === 'Active');
-    return found ? found.amount : 0;
-  }
-  if (feeType === 'Exam Fee') {
-    const num = parseInt(className.replace(/\D/g, ''), 10);
-    let rangeKey = 'Class 1-5';
-    if (num >= 6 && num <= 8) rangeKey = 'Class 6-8';
-    else if (num >= 9) rangeKey = 'Class 9-10';
-    const found = feeStructures.find((f) => f.feeType === 'Exam Fee' && f.className === rangeKey && f.status === 'Active');
-    return found ? found.amount : 0;
-  }
-  if (feeType === 'Monthly Fee') {
-    const found = feeStructures.find((f) => f.feeType === 'Monthly Fee' && f.className === className && f.status === 'Active');
-    return found ? found.amount : 0;
-  }
-  return 0;
-};
 
 const getInitials = (name) => name.split(' ').map((n) => n[0]).join('').slice(0, 2).toUpperCase();
 
@@ -41,9 +52,15 @@ const StudentAvatar = ({ name, className: cls }) => (
 );
 
 const CollectFee = ({ onDataChange }) => {
+  const { academic } = useSchoolConfig();
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState([]);
   const [hasSearched, setHasSearched] = useState(false);
+  const [searching, setSearching] = useState(false);
+
+  const [structures, setStructures] = useState([]);
+  const [structuresLoaded, setStructuresLoaded] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
 
   const [showModal, setShowModal] = useState(false);
   const [selectedStudent, setSelectedStudent] = useState(null);
@@ -59,25 +76,75 @@ const CollectFee = ({ onDataChange }) => {
   const [showReceiptModal, setShowReceiptModal] = useState(false);
   const [receiptData, setReceiptData] = useState(null);
 
-  const handleSearch = useCallback(() => {
+  const currentYear = /^\d{4}$/.test(academic?.currentYear || '') ? academic.currentYear : String(new Date().getFullYear());
+
+  const fetchStructures = async () => {
+    try {
+      const result = await feeService.getAllFeeStructures();
+      setStructures(result.data?.structures || []);
+    } catch (err) {
+      const msg = err.response?.data?.message || 'Failed to load fee structures';
+      toast.error(msg);
+    } finally {
+      setStructuresLoaded(true);
+    }
+  };
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    fetchStructures();
+  }, []);
+
+  const getFeeStructureForClass = (className) => {
+    const feeClass = CLASS_TO_FEE_CLASS[className] || className;
+    const active = structures.filter((s) => !s.isDeleted && s.status === 'Active');
+    return (
+      active.find((s) => s.className === feeClass && s.academicYear === currentYear) ||
+      active.find((s) => s.className === feeClass) ||
+      null
+    );
+  };
+
+  const handleSearch = useCallback(async () => {
     const q = searchQuery.trim().toLowerCase();
     if (!q) {
       setSearchResults([]);
       setHasSearched(false);
       return;
     }
-    const results = studentsWithFeeStatus.filter(
-      (s) => s.id.toLowerCase() === q || s.id.toLowerCase().includes(q)
-    );
-    setSearchResults(results);
-    setHasSearched(true);
+    setSearching(true);
+    try {
+      const result = await studentService.getAllStudents({ search: q, status: 'Active', limit: 50 });
+      const students = (result.data?.students || [])
+        .filter((s) => {
+          const id = (s.studentId || '').toLowerCase();
+          return id === q || id.includes(q);
+        })
+        .map((s) => ({
+          _id: s._id,
+          id: s.studentId,
+          name: s.fullName,
+          fatherName: s.fatherName,
+          class: s.class,
+        }));
+      setSearchResults(students);
+    } catch (err) {
+      const msg = err.response?.data?.message || 'Failed to search students';
+      toast.error(msg);
+      setSearchResults([]);
+    } finally {
+      setSearching(false);
+      setHasSearched(true);
+    }
   }, [searchQuery]);
 
   const handleSearchKeyDown = (e) => {
     if (e.key === 'Enter') handleSearch();
   };
 
-  const feeAmount = selectedStudent && feeType ? getFeeAmount(selectedStudent.class, feeType) : 0;
+  const feeAmount = selectedStudent && feeType
+    ? (getFeeStructureForClass(selectedStudent.class)?.[FEE_TYPE_FIELD[feeType]] ?? 0)
+    : 0;
   const totalPayable = feeAmount - Number(discount || 0) + Number(fine || 0);
   const remainingAmount = totalPayable - Number(amountPaid || 0);
 
@@ -124,7 +191,7 @@ const CollectFee = ({ onDataChange }) => {
     const newErrors = {};
     if (!feeType) newErrors.feeType = 'Please select a payment type';
     if (!month) newErrors.month = 'Please select a month';
-    if (feeType === 'Exam Fee' && !exam) newErrors.exam = 'Please select an exam';
+    if (feeType === 'Examination Fee' && !exam) newErrors.exam = 'Please select an exam';
     if (!amountPaid || Number(amountPaid) <= 0) newErrors.amountPaid = 'Enter a valid amount';
     if (Number(amountPaid) > totalPayable) newErrors.amountPaid = 'Amount cannot exceed total payable';
     if (!paymentMethod) newErrors.paymentMethod = 'Please select a payment method';
@@ -132,36 +199,55 @@ const CollectFee = ({ onDataChange }) => {
     return Object.keys(newErrors).length === 0;
   };
 
-  const handleCollectFee = () => {
+  const handleCollectFee = async () => {
     if (!validate()) return;
 
-    const receiptId = `REC-${new Date().getFullYear()}-${String(Math.floor(Math.random() * 9000) + 1000)}`;
+    setSubmitting(true);
+    try {
+      const result = await feeService.collectFee({
+        studentId: selectedStudent._id,
+        feeType,
+        month,
+        exam: feeType === 'Examination Fee' ? exam : undefined,
+        discount: Number(discount || 0),
+        lateFine: Number(fine || 0),
+        amountPaid: Number(amountPaid),
+        paymentMethod,
+      });
 
-    const receipt = {
-      id: receiptId,
-      date: new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }),
-      studentId: selectedStudent.id,
-      studentName: selectedStudent.name,
-      fatherName: selectedStudent.fatherName,
-      className: selectedStudent.class,
-      section: selectedStudent.section,
-      feeType,
-      month,
-      exam: feeType === 'Exam Fee' ? exam : null,
-      feeAmount,
-      discount: Number(discount || 0),
-      fine: Number(fine || 0),
-      totalPayable,
-      amountPaid: Number(amountPaid),
-      remainingAmount,
-      paymentMethod,
-    };
+      const payment = result.data?.payment;
 
-    setReceiptData(receipt);
-    setShowReceiptModal(true);
-    closeModal();
-    toast.success(`Fee collected successfully from ${selectedStudent.name}`);
-    onDataChange?.();
+      const receipt = {
+        id: payment.receiptId,
+        date: new Date(payment.paymentDate || payment.createdAt).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }),
+        studentId: payment.studentId,
+        studentName: payment.studentName,
+        fatherName: payment.fatherName,
+        className: payment.className,
+        feeType,
+        month: payment.month,
+        exam: payment.exam || null,
+        feeAmount: payment.baseAmount,
+        discount: payment.discount,
+        fine: payment.lateFine,
+        totalPayable: payment.totalPayable,
+        amountPaid: payment.amountPaid,
+        remainingAmount: payment.remainingAmount,
+        paymentMethod: payment.paymentMethod,
+      };
+
+      setReceiptData(receipt);
+      setShowReceiptModal(true);
+      closeModal();
+      toast.success(`Fee collected successfully from ${selectedStudent.name}`);
+      onDataChange?.();
+      fetchStructures();
+    } catch (err) {
+      const msg = err.response?.data?.message || 'Failed to collect fee';
+      toast.error(msg);
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   const tableColumns = [
@@ -220,9 +306,10 @@ const CollectFee = ({ onDataChange }) => {
           </div>
           <button
             onClick={handleSearch}
-            className="px-5 py-2.5 rounded-lg text-sm font-medium text-white bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 transition-all cursor-pointer shadow-sm whitespace-nowrap"
+            disabled={searching}
+            className="px-5 py-2.5 rounded-lg text-sm font-medium text-white bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 transition-all cursor-pointer shadow-sm whitespace-nowrap disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            Search
+            {searching ? 'Searching...' : 'Search'}
           </button>
         </div>
       </div>
@@ -286,20 +373,20 @@ const CollectFee = ({ onDataChange }) => {
                       name="month"
                       value={month}
                       onChange={(e) => { setMonth(e.target.value); if (errors.month) setErrors((p) => ({ ...p, month: '' })); }}
-                      options={months}
+                      options={MONTHS}
                       placeholder="Select month"
                       required
                     />
                     {errors.month && <p className="text-xs text-red-600 dark:text-red-400 -mt-3 mb-2">{errors.month}</p>}
                   </div>
-                  {feeType === 'Exam Fee' && (
+                  {feeType === 'Examination Fee' && (
                     <div>
                       <SelectInput
                         label="Select Exam"
                         name="exam"
                         value={exam}
                         onChange={(e) => { setExam(e.target.value); if (errors.exam) setErrors((p) => ({ ...p, exam: '' })); }}
-                        options={exams}
+                        options={EXAMS}
                         placeholder="Select exam"
                         required
                       />
@@ -315,6 +402,11 @@ const CollectFee = ({ onDataChange }) => {
                     <span className="text-sm text-gray-600 dark:text-gray-300">Original Fee</span>
                     <span className="text-lg font-bold text-gray-900 dark:text-white">{formatCurrency(feeAmount)}</span>
                   </div>
+                  {structuresLoaded && feeType && feeAmount === 0 && (
+                    <p className="text-xs text-amber-600 dark:text-amber-500">
+                      No active fee structure found for this class. Payment cannot be submitted.
+                    </p>
+                  )}
 
                   <div className="grid grid-cols-2 gap-3">
                     <Input
@@ -367,7 +459,7 @@ const CollectFee = ({ onDataChange }) => {
                     name="paymentMethod"
                     value={paymentMethod}
                     onChange={(e) => { setPaymentMethod(e.target.value); if (errors.paymentMethod) setErrors((p) => ({ ...p, paymentMethod: '' })); }}
-                    options={paymentMethods}
+                    options={PAYMENT_METHODS}
                     placeholder="Select payment method"
                     required
                   />
@@ -375,8 +467,8 @@ const CollectFee = ({ onDataChange }) => {
                 </div>
 
                 <div className="flex gap-3 pt-1">
-                  <Button variant="secondary" onClick={closeModal} className="flex-1">Cancel</Button>
-                  <Button onClick={handleCollectFee} className="flex-1">Collect Fee</Button>
+                  <Button variant="secondary" onClick={closeModal} className="flex-1" disabled={submitting}>Cancel</Button>
+                  <Button onClick={handleCollectFee} loading={submitting} className="flex-1">Collect Fee</Button>
                 </div>
               </div>
             )}

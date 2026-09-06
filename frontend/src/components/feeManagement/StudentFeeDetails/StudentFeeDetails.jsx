@@ -1,43 +1,62 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect, useMemo } from 'react';
 import { MagnifyingGlassIcon, PrinterIcon, UserIcon, CurrencyDollarIcon, ClockIcon } from '@heroicons/react/24/outline';
+import toast from 'react-hot-toast';
 import Table from '../../common/Table/Table';
 import Button from '../../common/Button/Button';
 import Modal from '../../common/Modal/Modal';
-import { studentsWithFeeStatus, recentCollections, months, feeStructures, outstandingDues } from '../../../data/feeManagement/dummyData';
+import feeService from '../../../services/fee/fee.service';
+import studentService from '../../../services/student/student.service';
 import { useSchoolConfig } from '../../../contexts/SchoolConfigContext';
 
-const FEE_TYPES = ['All Fee Types', 'Monthly Fee', 'Admission Fee', 'Exam Fee'];
-const ALL_MONTHS = ['All Months', ...months];
+const FEE_TYPES = ['All Fee Types', 'Monthly Fee', 'Admission Fee', 'Examination Fee'];
+const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+const ALL_MONTHS = ['All Months', ...MONTHS];
+
+const CLASS_TO_FEE_CLASS = {
+  Montessori: 'Montessori',
+  Nursery: 'Nursery',
+  'KG 1': 'KG1',
+  'KG 2': 'KG2',
+  'Class 1': '1',
+  'Class 2': '2',
+  'Class 3': '3',
+  'Class 4': '4',
+  'Class 5': '5',
+  'Class 6': '6',
+  'Class 7': '7',
+  'Class 8': '8',
+  'Class 9': '9',
+  'Class 10': '10',
+};
+
+const toDisplayFeeType = (canonical) => ({
+  Admission: 'Admission Fee',
+  Monthly: 'Monthly Fee',
+  Examination: 'Examination Fee',
+}[canonical] || canonical);
 
 const formatCurrency = (val) => `Rs. ${Number(val || 0).toLocaleString()}`;
 
-const getInitials = (name) => name.split(' ').map((n) => n[0]).join('').slice(0, 2).toUpperCase();
-
-const getFeeAmount = (className, feeType) => {
-  if (feeType === 'Admission Fee') {
-    const found = feeStructures.find((f) => f.feeType === 'Admission Fee' && f.className === 'All Classes' && f.status === 'Active');
-    return found ? found.amount : 0;
-  }
-  if (feeType === 'Exam Fee') {
-    const num = parseInt(className.replace(/\D/g, ''), 10);
-    let rangeKey = 'Class 1-5';
-    if (num >= 6 && num <= 8) rangeKey = 'Class 6-8';
-    else if (num >= 9) rangeKey = 'Class 9-10';
-    const found = feeStructures.find((f) => f.feeType === 'Exam Fee' && f.className === rangeKey && f.status === 'Active');
-    return found ? found.amount : 0;
-  }
-  if (feeType === 'Monthly Fee') {
-    const found = feeStructures.find((f) => f.feeType === 'Monthly Fee' && f.className === className && f.status === 'Active');
-    return found ? found.amount : 0;
-  }
-  return 0;
+const formatDate = (val) => {
+  if (!val) return '-';
+  const d = new Date(val);
+  if (Number.isNaN(d.getTime())) return '-';
+  return d.toLocaleDateString('en-CA');
 };
 
+const getInitials = (name) => name.split(' ').map((n) => n[0]).join('').slice(0, 2).toUpperCase();
+
 const StudentFeeDetails = () => {
-  const { schoolInfo, branding } = useSchoolConfig();
+  const { schoolInfo, branding, academic } = useSchoolConfig();
   const [searchQuery, setSearchQuery] = useState('');
   const [foundStudent, setFoundStudent] = useState(null);
   const [hasSearched, setHasSearched] = useState(false);
+  const [searching, setSearching] = useState(false);
+
+  const [studentPayments, setStudentPayments] = useState([]);
+  const [paymentsLoading, setPaymentsLoading] = useState(false);
+
+  const [structures, setStructures] = useState([]);
 
   const [feeTypeFilter, setFeeTypeFilter] = useState('All Fee Types');
   const [monthFilter, setMonthFilter] = useState('All Months');
@@ -45,40 +64,191 @@ const StudentFeeDetails = () => {
   const [showReceiptModal, setShowReceiptModal] = useState(false);
   const [receiptItem, setReceiptItem] = useState(null);
 
-  const handleSearch = useCallback(() => {
+  const currentYear = /^\d{4}$/.test(academic?.currentYear || '') ? academic.currentYear : String(new Date().getFullYear());
+
+  const fetchStructures = useCallback(async () => {
+    try {
+      const result = await feeService.getAllFeeStructures();
+      setStructures(result.data?.structures || []);
+    } catch (err) {
+      const msg = err.response?.data?.message || 'Failed to load fee structures';
+      toast.error(msg);
+    }
+  }, []);
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    fetchStructures();
+  }, [fetchStructures]);
+
+  const getFeeStructureForClass = (className) => {
+    const feeClass = CLASS_TO_FEE_CLASS[className] || className;
+    const active = structures.filter((s) => !s.isDeleted && s.status === 'Active');
+    return (
+      active.find((s) => s.className === feeClass && s.academicYear === currentYear) ||
+      active.find((s) => s.className === feeClass) ||
+      null
+    );
+  };
+
+  const handleSearch = useCallback(async () => {
     const q = searchQuery.trim().toLowerCase();
     if (!q) {
       setFoundStudent(null);
       setHasSearched(false);
+      setStudentPayments([]);
+      setPaymentsLoading(false);
       return;
     }
-    const student = studentsWithFeeStatus.find(
-      (s) => s.id.toLowerCase() === q || s.id.toLowerCase().includes(q)
-    );
-    setFoundStudent(student || null);
-    setHasSearched(true);
+
+    setSearching(true);
+    setStudentPayments([]);
+    setPaymentsLoading(true);
+    try {
+      const result = await studentService.getAllStudents({ search: q, status: 'Active', limit: 50 });
+      const students = result.data?.students || [];
+      const student = students.find((s) => {
+        const id = (s.studentId || '').toLowerCase();
+        const name = (s.fullName || '').toLowerCase();
+        return id === q || id.includes(q) || name === q || name.includes(q);
+      }) || null;
+
+      setFoundStudent(student ? {
+        _id: student._id,
+        id: student.studentId,
+        name: student.fullName,
+        fatherName: student.fatherName,
+        class: student.class,
+        gender: student.gender,
+        fatherPhone: student.fatherPhone,
+        admissionDate: formatDate(student.admissionDate),
+      } : null);
+      if (!student) setPaymentsLoading(false);
+      setHasSearched(true);
+    } catch (err) {
+      const msg = err.response?.data?.message || 'Failed to search students';
+      toast.error(msg);
+      setFoundStudent(null);
+      setPaymentsLoading(false);
+      setHasSearched(true);
+    } finally {
+      setSearching(false);
+    }
   }, [searchQuery]);
 
   const handleSearchKeyDown = (e) => {
     if (e.key === 'Enter') handleSearch();
   };
 
-  const studentPayments = foundStudent
-    ? recentCollections.filter((r) => r.studentId === foundStudent.id)
-    : [];
+  useEffect(() => {
+    if (!foundStudent) return undefined;
 
-  const filteredPayments = studentPayments.filter((r) => {
+    let cancelled = false;
+
+    feeService.getStudentPayments({ studentId: foundStudent._id })
+      .then((res) => {
+        if (cancelled) return;
+        const payments = (res.data?.payments || []).map((p) => ({
+          _id: p._id,
+          id: p.receiptId,
+          feeType: toDisplayFeeType(p.feeType),
+          month: p.month,
+          exam: p.exam || null,
+          amount: p.baseAmount,
+          discount: p.discount,
+          fine: p.lateFine,
+          totalPaid: p.amountPaid,
+          remaining: p.remainingAmount,
+          status: p.remainingAmount > 0 ? 'Partial' : 'Paid',
+          date: formatDate(p.paymentDate),
+          paymentMethod: p.paymentMethod,
+          academicYear: p.academicYear,
+          studentId: p.studentId,
+          studentName: p.studentName,
+          fatherName: p.fatherName,
+          className: p.className,
+        }));
+        setStudentPayments(payments);
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        const msg = err.response?.data?.message || 'Failed to load payment history';
+        toast.error(msg);
+        setStudentPayments([]);
+      })
+      .finally(() => {
+        if (!cancelled) setPaymentsLoading(false);
+      });
+
+    return () => { cancelled = true; };
+  }, [foundStudent]);
+
+  const feeLines = useMemo(() => {
+    const lines = new Map();
+
+    for (const payment of studentPayments) {
+      const key = `${payment.feeType}::${payment.month || ''}::${payment.exam || ''}`;
+
+      if (!lines.has(key)) {
+        lines.set(key, {
+          key,
+          feeType: payment.feeType,
+          month: payment.month,
+          exam: payment.exam,
+          amount: payment.amount,
+          discount: 0,
+          fine: 0,
+          totalPaid: 0,
+        });
+      }
+
+      const line = lines.get(key);
+      line.discount += payment.discount;
+      line.fine += payment.fine;
+      line.totalPaid += payment.totalPaid;
+    }
+
+    for (const line of lines.values()) {
+      line.remaining = Math.max(0, line.amount - line.totalPaid + line.fine - line.discount);
+      line.status = line.remaining > 0 ? 'Partial' : 'Paid';
+    }
+
+    return Array.from(lines.values());
+  }, [studentPayments]);
+
+  const lineByKey = useMemo(
+    () => new Map(feeLines.map((line) => [line.key, line])),
+    [feeLines]
+  );
+
+  const enrichedStudentPayments = useMemo(
+    () => studentPayments.map((payment) => {
+      const line = lineByKey.get(`${payment.feeType}::${payment.month || ''}::${payment.exam || ''}`);
+      return line ? { ...payment, remaining: line.remaining, status: line.status } : payment;
+    }),
+    [studentPayments, lineByKey]
+  );
+
+  const filteredPayments = enrichedStudentPayments.filter((r) => {
     const matchesFeeType = feeTypeFilter === 'All Fee Types' || r.feeType === feeTypeFilter;
     const matchesMonth = monthFilter === 'All Months' || r.month === monthFilter;
     return matchesFeeType && matchesMonth;
   });
 
-  const monthlyPaid = studentPayments.filter((r) => r.feeType === 'Monthly Fee' && r.status === 'Paid').reduce((sum, r) => sum + r.totalPaid, 0);
-  const monthlyDue = studentPayments.filter((r) => r.feeType === 'Monthly Fee').reduce((sum, r) => sum + (r.amount - r.totalPaid), 0);
-  const admissionPaid = studentPayments.filter((r) => r.feeType === 'Admission Fee' && r.status === 'Paid').reduce((sum, r) => sum + r.totalPaid, 0);
-  const admissionDue = studentPayments.filter((r) => r.feeType === 'Admission Fee').reduce((sum, r) => sum + (r.amount - r.totalPaid), 0);
-  const examPaid = studentPayments.filter((r) => r.feeType === 'Exam Fee' && r.status === 'Paid').reduce((sum, r) => sum + r.totalPaid, 0);
-  const examDue = studentPayments.filter((r) => r.feeType === 'Exam Fee').reduce((sum, r) => sum + (r.amount - r.totalPaid), 0);
+  const structureForStudent = getFeeStructureForClass(foundStudent?.class);
+  const monthlyTotal = (structureForStudent?.monthlyFee || 0) * 12;
+  const admissionTotal = structureForStudent?.admissionFee || 0;
+  const examTotal = (structureForStudent?.examFee || 0) * 3;
+
+  const monthlyLines = feeLines.filter((l) => l.feeType === 'Monthly Fee');
+  const admissionLines = feeLines.filter((l) => l.feeType === 'Admission Fee');
+  const examLines = feeLines.filter((l) => l.feeType === 'Examination Fee');
+  const monthlyPaid = monthlyLines.reduce((sum, l) => sum + l.totalPaid, 0);
+  const monthlyDue = monthlyLines.reduce((sum, l) => sum + l.remaining, 0);
+  const admissionPaid = admissionLines.reduce((sum, l) => sum + l.totalPaid, 0);
+  const admissionDue = admissionLines.reduce((sum, l) => sum + l.remaining, 0);
+  const examPaid = examLines.reduce((sum, l) => sum + l.totalPaid, 0);
+  const examDue = examLines.reduce((sum, l) => sum + l.remaining, 0);
   const totalPaid = monthlyPaid + admissionPaid + examPaid;
   const totalRemaining = monthlyDue + admissionDue + examDue;
 
@@ -137,7 +307,7 @@ const StudentFeeDetails = () => {
   };
 
   const getShowMonth = () => feeTypeFilter === 'All Fee Types' || feeTypeFilter === 'Monthly Fee' || feeTypeFilter === 'Admission Fee';
-  const getShowExam = () => feeTypeFilter === 'All Fee Types' || feeTypeFilter === 'Exam Fee';
+  const getShowExam = () => feeTypeFilter === 'All Fee Types' || feeTypeFilter === 'Examination Fee';
 
   const paymentColumns = [
     { key: 'id', label: 'Receipt No.' },
@@ -224,9 +394,10 @@ const StudentFeeDetails = () => {
           </div>
           <button
             onClick={handleSearch}
-            className="px-5 py-2.5 rounded-lg text-sm font-medium text-white bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 transition-all cursor-pointer shadow-sm whitespace-nowrap"
+            disabled={searching}
+            className="px-5 py-2.5 rounded-lg text-sm font-medium text-white bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 transition-all cursor-pointer shadow-sm whitespace-nowrap disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            Search
+            {searching ? 'Searching...' : 'Search'}
           </button>
         </div>
       </div>
@@ -291,7 +462,7 @@ const StudentFeeDetails = () => {
                 <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Monthly Fee</p>
               </div>
               <div className="space-y-1.5 text-sm">
-                <div className="flex justify-between"><span className="text-gray-500 dark:text-gray-400">Total</span><span className="font-semibold text-gray-900 dark:text-white">{formatCurrency(foundStudent.monthlyFee * 12)}</span></div>
+                <div className="flex justify-between"><span className="text-gray-500 dark:text-gray-400">Total</span><span className="font-semibold text-gray-900 dark:text-white">{formatCurrency(monthlyTotal)}</span></div>
                 <div className="flex justify-between"><span className="text-gray-500 dark:text-gray-400">Paid</span><span className="font-semibold text-green-600 dark:text-green-400">{formatCurrency(monthlyPaid)}</span></div>
                 <div className="flex justify-between"><span className="text-gray-500 dark:text-gray-400">Remaining</span><span className="font-semibold text-red-600 dark:text-red-400">{formatCurrency(monthlyDue)}</span></div>
               </div>
@@ -305,7 +476,7 @@ const StudentFeeDetails = () => {
                 <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Admission Fee</p>
               </div>
               <div className="space-y-1.5 text-sm">
-                <div className="flex justify-between"><span className="text-gray-500 dark:text-gray-400">Total</span><span className="font-semibold text-gray-900 dark:text-white">{formatCurrency(foundStudent.admissionFee)}</span></div>
+                <div className="flex justify-between"><span className="text-gray-500 dark:text-gray-400">Total</span><span className="font-semibold text-gray-900 dark:text-white">{formatCurrency(admissionTotal)}</span></div>
                 <div className="flex justify-between"><span className="text-gray-500 dark:text-gray-400">Paid</span><span className="font-semibold text-green-600 dark:text-green-400">{formatCurrency(admissionPaid)}</span></div>
                 <div className="flex justify-between"><span className="text-gray-500 dark:text-gray-400">Remaining</span><span className="font-semibold text-red-600 dark:text-red-400">{formatCurrency(admissionDue)}</span></div>
               </div>
@@ -319,7 +490,7 @@ const StudentFeeDetails = () => {
                 <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Exam Fee</p>
               </div>
               <div className="space-y-1.5 text-sm">
-                <div className="flex justify-between"><span className="text-gray-500 dark:text-gray-400">Total</span><span className="font-semibold text-gray-900 dark:text-white">{formatCurrency(foundStudent.examFee * 3)}</span></div>
+                <div className="flex justify-between"><span className="text-gray-500 dark:text-gray-400">Total</span><span className="font-semibold text-gray-900 dark:text-white">{formatCurrency(examTotal)}</span></div>
                 <div className="flex justify-between"><span className="text-gray-500 dark:text-gray-400">Paid</span><span className="font-semibold text-green-600 dark:text-green-400">{formatCurrency(examPaid)}</span></div>
                 <div className="flex justify-between"><span className="text-gray-500 dark:text-gray-400">Remaining</span><span className="font-semibold text-red-600 dark:text-red-400">{formatCurrency(examDue)}</span></div>
               </div>
@@ -343,7 +514,17 @@ const StudentFeeDetails = () => {
           </div>
 
           {(() => {
-            const studentDues = outstandingDues.filter((d) => d.studentId === foundStudent.id && d.remaining > 0);
+            const studentDues = feeLines
+              .filter((line) => line.remaining > 0)
+              .map((line) => ({
+                id: `${line.feeType}-${line.month || ''}-${line.exam || ''}`,
+                feeType: line.feeType,
+                month: line.month,
+                exam: line.exam,
+                totalPaid: line.totalPaid,
+                remaining: line.remaining,
+                status: line.totalPaid <= 0 ? 'Unpaid' : 'Partial',
+              }));
             const totalPreviousDues = studentDues.reduce((sum, d) => sum + d.remaining, 0);
             if (studentDues.length === 0) return null;
             return (
@@ -438,7 +619,11 @@ const StudentFeeDetails = () => {
               </select>
             </div>
 
-            <Table columns={paymentColumns} data={filteredPayments} renderRow={renderPaymentRow} />
+            {paymentsLoading ? (
+              <p className="text-sm text-gray-500 dark:text-gray-400 py-6 text-center">Loading payment history...</p>
+            ) : (
+              <Table columns={paymentColumns} data={filteredPayments} renderRow={renderPaymentRow} />
+            )}
           </div>
         </>
       )}
@@ -484,7 +669,7 @@ const StudentFeeDetails = () => {
                 {receiptItem.feeType === 'Admission Fee' && receiptItem.month && (
                   <div className="fee-row"><span className="label">Month:</span><span className="value">{receiptItem.month}</span></div>
                 )}
-                {receiptItem.feeType === 'Exam Fee' && (
+                {receiptItem.feeType === 'Examination Fee' && (
                   <>
                     {receiptItem.month && <div className="fee-row"><span className="label">Month:</span><span className="value">{receiptItem.month}</span></div>}
                     {receiptItem.exam && <div className="fee-row"><span className="label">Exam:</span><span className="value">{receiptItem.exam}</span></div>}
@@ -494,7 +679,7 @@ const StudentFeeDetails = () => {
                 {receiptItem.discount > 0 && <div className="fee-row"><span className="label">Discount:</span><span className="value">- {formatCurrency(receiptItem.discount)}</span></div>}
                 {receiptItem.fine > 0 && <div className="fee-row"><span className="label">Fine:</span><span className="value">+ {formatCurrency(receiptItem.fine)}</span></div>}
                 <div className="paid-row"><span>AMOUNT PAID:</span><span>{formatCurrency(receiptItem.totalPaid)}</span></div>
-                <div className="fee-row"><span className="label">Remaining:</span><span className="value font-bold">{formatCurrency(receiptItem.amount - receiptItem.discount + receiptItem.fine - receiptItem.totalPaid)}</span></div>
+                <div className="fee-row"><span className="label">Remaining:</span><span className="value font-bold">{formatCurrency(receiptItem.remaining)}</span></div>
                 <div className="fee-row"><span className="label">Payment Method:</span><span className="value">{receiptItem.paymentMethod}</span></div>
               </div>
 
