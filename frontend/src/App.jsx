@@ -17,6 +17,7 @@ import TeacherLoginPage from './pages/auth/TeacherAuth/TeacherLogin';
 import StudentLoginPage from './pages/auth/StudentAuth/StudentLogin';
 import TeacherDashboard from './pages/teacher/TeacherDashboard';
 import StudentDashboard from './pages/student/StudentDashboard';
+import PortalAccess from './pages/portal/PortalAccess';
 import AdminLayout from './layouts/AdminLayout';
 import AdminDashboard from './pages/admin/AdminDashboard';
 import StudentManagement from './pages/admin/StudentManagement';
@@ -33,10 +34,6 @@ import CollectFeePage from './pages/admin/FeeManagement/CollectFee';
 import StudentFeeDetailsPage from './pages/admin/FeeManagement/StudentFeeDetails';
 import FeeReportsPage from './pages/admin/FeeManagement/Reports';
 import OutstandingDuesPage from './pages/admin/FeeManagement/OutstandingDues';
-import UserDashboard from './pages/admin/dashboards/UserDashboard';
-import UserAccounts from './pages/admin/UserAccounts';
-import PortalControl from './pages/admin/PortalControl';
-import ActivityMaintenance from './pages/admin/ActivityMaintenance';
 import SchoolSettings from './pages/admin/SchoolSettings';
 import ExaminationDashboardPage from './pages/admin/dashboards/ExaminationDashboard';
 import ExamSetupPage from './pages/admin/ExamManagement/ExamSetup';
@@ -45,6 +42,9 @@ import ExamSchedulePage from './pages/admin/ExamManagement/ExamSchedule';
 import MarksEntryPage from './pages/admin/ExamManagement/MarksEntry';
 import ResultsPage from './pages/admin/ExamManagement/Results';
 import ResultHistoryPage from './pages/admin/ExamManagement/ResultHistory';
+import AllAccountsPage from './pages/admin/UserAccounts/AllAccounts';
+import CreateAccountPage from './pages/admin/UserAccounts/CreateAccount';
+import AccountAccessPage from './pages/admin/UserAccounts/AccountAccess';
 
 function IndexRedirect() {
   const { user, role, loading: authLoading, DASHBOARD_ROUTES } = useAuth();
@@ -110,10 +110,6 @@ function AppContent() {
             <Route path="fees/student-fee-details" element={<StudentFeeDetailsPage />} />
             <Route path="fees/reports" element={<FeeReportsPage />} />
             <Route path="fees/outstanding-dues" element={<OutstandingDuesPage />} />
-            <Route path="users/dashboard" element={<UserDashboard />} />
-            <Route path="user-accounts" element={<UserAccounts />} />
-            <Route path="portal-control" element={<PortalControl />} />
-            <Route path="activity-maintenance" element={<ActivityMaintenance />} />
             <Route path="settings" element={<SchoolSettings />} />
             <Route path="exams/dashboard" element={<ExaminationDashboardPage />} />
             <Route path="exams/setup" element={<ExamSetupPage />} />
@@ -122,6 +118,9 @@ function AppContent() {
             <Route path="exams/marks-entry" element={<MarksEntryPage />} />
             <Route path="exams/results" element={<ResultsPage />} />
             <Route path="exams/result-history" element={<ResultHistoryPage />} />
+            <Route path="accounts/all" element={<AllAccountsPage />} />
+            <Route path="accounts/create" element={<CreateAccountPage />} />
+            <Route path="accounts/access" element={<AccountAccessPage />} />
           </Route>
         </Route>
 
@@ -132,6 +131,8 @@ function AppContent() {
         <Route element={<ProtectedRoute allowedRoles={['student']} />}>
           <Route path="/student/dashboard" element={<StudentDashboard />} />
         </Route>
+
+        <Route path="/portal/access" element={<PortalAccess />} />
 
         <Route path="/" element={<IndexRedirect />} />
         <Route path="*" element={<Navigate to="/admin/login" replace />} />

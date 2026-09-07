@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from '../../../hooks/useLocalization';
 import toast from 'react-hot-toast';
-import { UsersIcon, UserGroupIcon, UserMinusIcon, UserPlusIcon, ArrowPathIcon } from '@heroicons/react/24/outline';
+import { UsersIcon, UserGroupIcon, UserMinusIcon, UserPlusIcon, ArrowPathIcon, ArrowTopRightOnSquareIcon, ShieldCheckIcon } from '@heroicons/react/24/outline';
 import StatCard from '../../common/StatCard/StatCard';
 import FilterDropdown from '../../common/FilterDropdown/FilterDropdown';
 import SearchInput from '../../common/SearchInput/SearchInput';
@@ -15,6 +15,7 @@ import EditStudentModal from '../../common/EditStudentModal/EditStudentModal';
 import ConfirmationModal from '../../common/ConfirmationModal/ConfirmationModal';
 import { getImageUrl } from '../../../utils/imageUrl';
 import studentService from '../../../services/student/student.service';
+import portalService from '../../../services/portal/portal.service';
 import { CLASS_NAMES } from '../../../utils/classNames';
 import Spinner from '../../common/Spinner/Spinner';
 
@@ -41,7 +42,27 @@ const AllStudents = () => {
   const [editingStudent, setEditingStudent] = useState(null);
   const [deletingStudent, setDeletingStudent] = useState(null);
   const [deleteLoading, setDeleteLoading] = useState(false);
+  const [portalStudent, setPortalStudent] = useState(null);
+  const [portalLoading, setPortalLoading] = useState(false);
   const debounceRef = useRef(null);
+  const pendingPortalTokenRef = useRef(null);
+
+  useEffect(() => {
+    const handlePortalHandshake = (event) => {
+      if (event.origin !== window.location.origin) return;
+      if (event.data?.type !== 'SMS_PORTAL_READY') return;
+      const pending = pendingPortalTokenRef.current;
+      if (!pending || !pending.token || !pending.window) return;
+      if (event.source !== pending.window) return;
+      event.source.postMessage(
+        { type: 'SMS_PORTAL_ACCESS_TOKEN', token: pending.token },
+        event.origin
+      );
+      pending.token = null;
+    };
+    window.addEventListener('message', handlePortalHandshake);
+    return () => window.removeEventListener('message', handlePortalHandshake);
+  }, []);
 
   const fetchStudents = useCallback(async () => {
     setLoading(true);
@@ -109,6 +130,38 @@ const AllStudents = () => {
     }
   };
 
+  const handleOpenPortal = async () => {
+    if (!portalStudent) return;
+
+    const portalWindow = window.open('/portal/access', '_blank');
+    setPortalLoading(true);
+
+    try {
+      const res = await portalService.openPortal(portalStudent.studentId);
+      const portalToken = res.data?.portalToken;
+      if (!portalToken) throw new Error('No portal token returned');
+
+      if (!portalWindow) {
+        toast.error(t('popupBlocked'));
+        setPortalStudent(null);
+        return;
+      }
+
+      pendingPortalTokenRef.current = { token: portalToken, window: portalWindow };
+      portalWindow.postMessage(
+        { type: 'SMS_PORTAL_ACCESS_TOKEN', token: portalToken },
+        window.location.origin
+      );
+
+      setPortalStudent(null);
+    } catch (err) {
+      if (portalWindow) portalWindow.close();
+      toast.error(err.response?.data?.message || t('portalAccessFailed'));
+    } finally {
+      setPortalLoading(false);
+    }
+  };
+
   const totalStudents = pagination.totalStudents;
   const activeStudents = students.filter((s) => s.status === 'Active').length;
   const inactiveStudents = students.filter((s) => s.status === 'Inactive').length;
@@ -149,11 +202,21 @@ const AllStudents = () => {
         <StatusBadge status={student.status} />
       </td>
       <td className="px-4 py-3 text-right">
-        <ActionButtons
-          onView={() => navigate(`/admin/students/${student.studentId}`, { state: { student } })}
-          onEdit={() => setEditingStudent(student)}
-          onDelete={() => setDeletingStudent(student)}
-        />
+        <div className="flex items-center justify-end gap-1.5">
+          <ActionButtons
+            onView={() => navigate(`/admin/students/${student.studentId}`, { state: { student } })}
+            onEdit={() => setEditingStudent(student)}
+            onDelete={() => setDeletingStudent(student)}
+          />
+          <button
+            className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/30 transition-all duration-200 shadow-sm hover:shadow-md hover:shadow-indigo-500/15 cursor-pointer border border-indigo-200 dark:border-indigo-800/50"
+            title={t('openPortal')}
+            onClick={() => setPortalStudent(student)}
+          >
+            <ArrowTopRightOnSquareIcon className="h-3.5 w-3.5" />
+            <span className="text-xs font-medium">{t('portal')}</span>
+          </button>
+        </div>
       </td>
     </>
   );
@@ -350,6 +413,63 @@ const AllStudents = () => {
         loading={deleteLoading}
         onConfirm={handleDeleteConfirm}
       />
+
+      <ConfirmationModal
+        isOpen={!!portalStudent}
+        onClose={() => setPortalStudent(null)}
+        title={t('studentPortalAccess')}
+        confirmLabel={t('goToStudentPortal')}
+        cancelLabel={t('cancel')}
+        variant="primary"
+        loading={portalLoading}
+        onConfirm={handleOpenPortal}
+        maxWidth="max-w-md"
+      >
+        {portalStudent && (
+          <div className="space-y-4">
+            <div className="flex items-center gap-4">
+              <div className="w-16 h-16 rounded-full bg-gradient-to-br from-blue-500 to-blue-700 flex items-center justify-center text-white font-bold text-xl ring-2 ring-yellow-400/50 flex-shrink-0 overflow-hidden">
+                {getImageUrl(portalStudent.studentImage) ? (
+                  <img
+                    src={getImageUrl(portalStudent.studentImage)}
+                    alt=""
+                    className="w-full h-full object-cover"
+                    onError={(e) => { e.target.style.display = 'none'; }}
+                  />
+                ) : (
+                  portalStudent.fullName.split(' ').map((n) => n[0]).join('').slice(0, 2).toUpperCase()
+                )}
+              </div>
+              <div className="min-w-0">
+                <p className="text-base font-semibold text-gray-900 dark:text-white truncate">{portalStudent.fullName}</p>
+                <p className="text-sm font-mono text-gray-500 dark:text-gray-400">{portalStudent.studentId}</p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3 rounded-xl bg-gray-50 dark:bg-gray-900/40 p-4">
+              <div>
+                <p className="text-xs text-gray-500 dark:text-gray-400">{t('class')}</p>
+                <p className="text-sm font-medium text-gray-900 dark:text-white">{portalStudent.class}</p>
+              </div>
+              <div>
+                <p className="text-xs text-gray-500 dark:text-gray-400">{t('academicYear')}</p>
+                <p className="text-sm font-medium text-gray-900 dark:text-white">{portalStudent.academicYear}</p>
+              </div>
+              <div>
+                <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">{t('profileStatus')}</p>
+                <StatusBadge status={portalStudent.status} />
+              </div>
+            </div>
+
+            <div className="flex items-start gap-2.5 rounded-xl bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-100 dark:border-indigo-800/60 p-3.5">
+              <ShieldCheckIcon className="h-5 w-5 text-indigo-500 shrink-0 mt-0.5" />
+              <p className="text-xs leading-relaxed text-indigo-900 dark:text-indigo-200">
+                {t('portalAccessConfirmation')}
+              </p>
+            </div>
+          </div>
+        )}
+      </ConfirmationModal>
     </div>
   );
 };

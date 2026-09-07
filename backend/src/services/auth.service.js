@@ -1,5 +1,7 @@
 import Admin from '../models/admin.model.js';
 import Student from '../models/student.model.js';
+import Teacher from '../models/teacher.model.js';
+import UserAccount from '../models/userAccount.model.js';
 import RefreshToken from '../models/refreshToken.model.js';
 import EmailChangeRequest from '../models/emailChangeRequest.model.js';
 import PasswordChangeRequest from '../models/passwordChangeRequest.model.js';
@@ -72,6 +74,54 @@ const buildUserResponse = (user) => ({
   studentId: user.studentId || undefined,
 });
 
+const userAccountLogin = async (loginId, password) => {
+  const account = await UserAccount.findOne({ loginId }).select('+password');
+  if (!account) {
+    return null;
+  }
+
+  if (!(await account.comparePassword(password))) {
+    throw new ApiError(401, 'Incorrect password');
+  }
+
+  if (!account.isActive) {
+    throw new ApiError(403, 'Your account has been deactivated. Contact the administration.');
+  }
+
+  const profileModel = account.role === 'student' ? Student : Teacher;
+  const profile = await profileModel.findById(account.referenceId);
+
+  if (!profile) {
+    throw new ApiError(403, 'Linked profile not found. Contact the administration.');
+  }
+
+  if (profile.status !== 'Active') {
+    throw new ApiError(403, 'Your profile is inactive. Contact the administration.');
+  }
+
+  account.lastLogin = new Date();
+  await account.save();
+
+  const accessToken = generateAccessToken(account._id);
+  const refreshToken = await createRefreshToken(account._id);
+
+  return {
+    user: {
+      id: account._id,
+      fullName: account.fullName || profile.fullName,
+      loginId: account.loginId,
+      role: account.role,
+      isActive: account.isActive,
+      lastLogin: account.lastLogin,
+      teacherId: account.role === 'teacher' ? (profile.teacherId || account.loginId) : undefined,
+      studentId: account.role === 'student' ? (profile.studentId || account.loginId) : undefined,
+      profile: profile || null,
+    },
+    accessToken,
+    refreshToken,
+  };
+};
+
 const adminLogin = async (email, password) => {
   const admin = await Admin.findOne({ email, role: 'admin' }).select('+password');
   if (!admin) {
@@ -92,9 +142,18 @@ const adminLogin = async (email, password) => {
 };
 
 const teacherLogin = async (teacherId, password) => {
+  const portal = await userAccountLogin(teacherId, password);
+  if (portal) {
+    portal.user.role = 'teacher';
+    return portal;
+  }
+
   const user = await Admin.findOne({ loginId: teacherId, role: 'teacher' }).select('+password');
   if (!user) {
     throw new ApiError(401, 'Teacher ID not found');
+  }
+  if (!user.isActive) {
+    throw new ApiError(403, 'Your account has been deactivated. Contact the administration.');
   }
   if (!(await user.comparePassword(password))) {
     throw new ApiError(401, 'Incorrect password');
@@ -111,6 +170,12 @@ const teacherLogin = async (teacherId, password) => {
 };
 
 const studentLogin = async (studentId, password) => {
+  const portal = await userAccountLogin(studentId, password);
+  if (portal) {
+    portal.user.role = 'student';
+    return portal;
+  }
+
   const user = await Admin.findOne({ loginId: studentId, role: 'student' }).select('+password');
   if (!user) {
     throw new ApiError(401, 'Student ID not found');
@@ -549,10 +614,29 @@ const completePasswordChange = async (userId, newPassword, meta = {}) => {
   return true;
 };
 
+const logoutUser = async (reqUser) => {
+  if (!reqUser) return;
+
+  const isPortalUser = reqUser.role === 'student' || reqUser.role === 'teacher';
+  if (!isPortalUser) return;
+
+  try {
+    const account = await UserAccount.findById(reqUser._id);
+    if (!account) return;
+
+    account.lastLogout = new Date();
+    await account.save();
+  } catch {
+    // Logout should not fail if lastLogout persistence errors
+  }
+};
+
 export default {
   adminLogin,
   teacherLogin,
   studentLogin,
+  userAccountLogin,
+  logoutUser,
   forgotPassword,
   verifyOtp,
   resetPassword,

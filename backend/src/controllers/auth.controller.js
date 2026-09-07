@@ -2,6 +2,7 @@ import { asyncHandler } from '../utils/asyncHandler.js';
 import { ApiError } from '../utils/apiError.js';
 import authService from '../services/auth.service.js';
 import Student from '../models/student.model.js';
+import Admin from '../models/admin.model.js';
 
 const adminLogin = asyncHandler(async (req, res) => {
   const { email, password } = req.body;
@@ -78,6 +79,8 @@ const logout = asyncHandler(async (req, res) => {
     await authService.revokeRefreshToken(token);
   }
 
+  await authService.logoutUser(req.user);
+
   return res.status(200).json({
     success: true,
     message: 'Logged out successfully',
@@ -90,6 +93,17 @@ const getMe = asyncHandler(async (req, res) => {
   let studentData = null;
   if (user.role === 'student' && user.referenceId) {
     studentData = await Student.findById(user.referenceId);
+  }
+
+  let accessInfo;
+  if (req.accessType === 'admin_portal_access' && req.accessAdminId) {
+    const admin = await Admin.findById(req.accessAdminId).select('fullName email');
+    accessInfo = {
+      type: 'admin_portal_access',
+      admin: admin
+        ? { id: admin._id, fullName: admin.fullName, email: admin.email }
+        : null,
+    };
   }
 
   return res.status(200).json({
@@ -107,6 +121,7 @@ const getMe = asyncHandler(async (req, res) => {
       lastLogin: user.lastLogin || undefined,
       createdAt: user.createdAt || undefined,
       student: studentData,
+      accessInfo,
     },
   });
 });

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { NavLink } from 'react-router-dom';
-import { XMarkIcon, Bars3Icon, UserGroupIcon, AcademicCapIcon, BookOpenIcon, ClipboardDocumentListIcon, CalendarDaysIcon, CheckCircleIcon, SparklesIcon, Cog6ToothIcon, ChevronDownIcon, Squares2X2Icon, CurrencyDollarIcon, DocumentCheckIcon } from '@heroicons/react/24/outline';
+import { XMarkIcon, Bars3Icon, UserGroupIcon, AcademicCapIcon, BookOpenIcon, ClipboardDocumentListIcon, CalendarDaysIcon, CheckCircleIcon, SparklesIcon, Cog6ToothIcon, ChevronDownIcon, Squares2X2Icon, CurrencyDollarIcon, DocumentCheckIcon, UserCircleIcon } from '@heroicons/react/24/outline';
 import useSchoolBranding from '../../../hooks/useSchoolBranding';
 import { getImageUrl } from '../../../utils/imageUrl';
 import { useTranslation } from '../../../hooks/useLocalization';
@@ -8,8 +8,8 @@ import { useTranslation } from '../../../hooks/useLocalization';
 const Sidebar = ({ isOpen, toggleSidebar }) => {
   const [dashboardsOpen, setDashboardsOpen] = useState(false);
   const [feeManagementOpen, setFeeManagementOpen] = useState(false);
-  const [userAccountsOpen, setUserAccountsOpen] = useState(false);
   const [examinationOpen, setExaminationOpen] = useState(false);
+  const [userAccountsOpen, setUserAccountsOpen] = useState(false);
   const { t } = useTranslation();
   const { schoolBranding } = useSchoolBranding();
   const logoUrl = schoolBranding?.adminPanelLogo ? getImageUrl(schoolBranding.adminPanelLogo) : null;
@@ -124,21 +124,6 @@ const Sidebar = ({ isOpen, toggleSidebar }) => {
                   {dashboardsOpen && (
                     <div className="ml-3 mt-1 space-y-0.5 border-l-2 border-gray-200 dark:border-gray-700 pl-3">
                       <NavLink
-                        to="/admin/users/dashboard"
-                        className={({ isActive }) =>
-                          `block px-3 py-2 rounded-lg text-sm transition-all duration-200 ${
-                            isActive
-                              ? 'bg-blue-500 text-white shadow-md font-medium'
-                              : 'text-gray-500 dark:text-gray-400 hover:bg-blue-50 dark:hover:bg-gray-700 hover:text-blue-600 dark:hover:text-blue-400'
-                          }`
-                        }
-                        onClick={() => {
-                          if (window.innerWidth < 768) toggleSidebar();
-                        }}
-                      >
-                        {t('userDashboard')}
-                      </NavLink>
-                      <NavLink
                         to="/admin/fees/dashboard"
                         className={({ isActive }) =>
                           `block px-3 py-2 rounded-lg text-sm transition-all duration-200 ${
@@ -173,7 +158,7 @@ const Sidebar = ({ isOpen, toggleSidebar }) => {
                 </div>
               ) : (
                 <NavLink
-                  to="/admin/users/dashboard"
+                  to="/admin/fees/dashboard"
                   className={({ isActive }) =>
                     `flex items-center transition-all duration-200 rounded-lg ${
                       isActive
@@ -509,64 +494,41 @@ const Sidebar = ({ isOpen, toggleSidebar }) => {
                     className="flex items-center justify-between w-full px-3 py-2.5 rounded-lg text-gray-600 dark:text-gray-400 hover:bg-blue-50 dark:hover:bg-gray-700 hover:text-blue-600 dark:hover:text-blue-400 transition-all cursor-pointer"
                   >
                     <div className="flex items-center gap-3">
-                      <UserGroupIcon className="h-5 w-5 flex-shrink-0" />
+                      <UserCircleIcon className="h-5 w-5 flex-shrink-0" />
                       <span className="text-sm font-medium">{t('userAccounts')}</span>
                     </div>
-                    <ChevronDownIcon className={`h-4 w-4 transition-transform duration-200 ${userAccountsOpen ? '' : 'rotate-180'}`} />
+                    <ChevronDownIcon className={`h-4 w-4 transition-transform duration-200 ${userAccountsOpen ? 'rotate-180' : ''}`} />
                   </button>
                   {userAccountsOpen && (
                     <div className="ml-3 mt-1 space-y-0.5 border-l-2 border-gray-200 dark:border-gray-700 pl-3">
-                      <NavLink
-                        to="/admin/user-accounts"
-                        className={({ isActive }) =>
-                          `block px-3 py-2 rounded-lg text-sm transition-all duration-200 ${
-                            isActive
-                              ? 'bg-blue-500 text-white shadow-md font-medium'
-                              : 'text-gray-500 dark:text-gray-400 hover:bg-blue-50 dark:hover:bg-gray-700 hover:text-blue-600 dark:hover:text-blue-400'
-                          }`
-                        }
-                        onClick={() => {
-                          if (window.innerWidth < 768) toggleSidebar();
-                        }}
-                      >
-                        {t('userAccounts')}
-                      </NavLink>
-                      <NavLink
-                        to="/admin/portal-control"
-                        className={({ isActive }) =>
-                          `block px-3 py-2 rounded-lg text-sm transition-all duration-200 ${
-                            isActive
-                              ? 'bg-blue-500 text-white shadow-md font-medium'
-                              : 'text-gray-500 dark:text-gray-400 hover:bg-blue-50 dark:hover:bg-gray-700 hover:text-blue-600 dark:hover:text-blue-400'
-                          }`
-                        }
-                        onClick={() => {
-                          if (window.innerWidth < 768) toggleSidebar();
-                        }}
-                      >
-                        {t('portalControl')}
-                      </NavLink>
-                      <NavLink
-                        to="/admin/activity-maintenance"
-                        className={({ isActive }) =>
-                          `block px-3 py-2 rounded-lg text-sm transition-all duration-200 ${
-                            isActive
-                              ? 'bg-blue-500 text-white shadow-md font-medium'
-                              : 'text-gray-500 dark:text-gray-400 hover:bg-blue-50 dark:hover:bg-gray-700 hover:text-blue-600 dark:hover:text-blue-400'
-                          }`
-                        }
-                        onClick={() => {
-                          if (window.innerWidth < 768) toggleSidebar();
-                        }}
-                      >
-                        {t('activityMaintenance')}
-                      </NavLink>
+                      {[
+                        { to: '/admin/accounts/all', label: 'allAccounts' },
+                        { to: '/admin/accounts/create', label: 'createAccount' },
+                        { to: '/admin/accounts/access', label: 'accountAccess' },
+                      ].map((item) => (
+                        <NavLink
+                          key={item.to}
+                          to={item.to}
+                          className={({ isActive }) =>
+                            `block px-3 py-2 rounded-lg text-sm transition-all duration-200 ${
+                              isActive
+                                ? 'bg-blue-500 text-white shadow-md font-medium'
+                                : 'text-gray-500 dark:text-gray-400 hover:bg-blue-50 dark:hover:bg-gray-700 hover:text-blue-600 dark:hover:text-blue-400'
+                            }`
+                          }
+                          onClick={() => {
+                            if (window.innerWidth < 768) toggleSidebar();
+                          }}
+                        >
+                          {t(item.label)}
+                        </NavLink>
+                      ))}
                     </div>
                   )}
                 </div>
               ) : (
                 <NavLink
-                  to="/admin/user-accounts"
+                  to="/admin/accounts/all"
                   className={({ isActive }) =>
                     `flex items-center transition-all duration-200 rounded-lg ${
                       isActive
@@ -578,7 +540,7 @@ const Sidebar = ({ isOpen, toggleSidebar }) => {
                     if (window.innerWidth < 768) toggleSidebar();
                   }}
                 >
-                  <UserGroupIcon className="h-5 w-5 flex-shrink-0" />
+                  <UserCircleIcon className="h-5 w-5 flex-shrink-0" />
                 </NavLink>
               )}
             </li>

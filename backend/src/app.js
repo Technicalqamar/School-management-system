@@ -5,6 +5,7 @@ import compression from 'compression';
 import rateLimit from 'express-rate-limit';
 import dotenv from 'dotenv';
 import authRoutes from './routes/auth.routes.js';
+import userAccountRoutes from './routes/userAccount.routes.js';
 import profileRoutes from './routes/profile.routes.js';
 import studentRoutes from './routes/student.routes.js';
 import studentPromotionRoutes from './routes/studentPromotion.routes.js';
@@ -28,6 +29,7 @@ import feeCollectionRoutes from './routes/feeCollection.routes.js';
 import feeOutstandingRoutes from './routes/feeOutstanding.routes.js';
 import feeReportRoutes from './routes/feeReport.routes.js';
 import feeDashboardRoutes from './routes/feeDashboard.routes.js';
+import portalRoutes from './routes/portal.routes.js';
 import { errorHandler } from './middlewares/error.middleware.js';
 
 dotenv.config();
@@ -59,6 +61,7 @@ const authLimiter = rateLimit({
 });
 
 app.use('/api/v1/auth', authLimiter, authRoutes);
+app.use('/api/v1/user-accounts', userAccountRoutes);
 app.use('/api/v1/profile', profileRoutes);
 app.use('/api/v1/students', studentPromotionRoutes);
 app.use('/api/v1/students', studentRoutes);
@@ -82,6 +85,7 @@ app.use('/api/v1/fees/collections', feeCollectionRoutes);
 app.use('/api/v1/fees/outstanding-dues', feeOutstandingRoutes);
 app.use('/api/v1/fees/reports', feeReportRoutes);
 app.use('/api/v1/fees/dashboard', feeDashboardRoutes);
+app.use('/api/v1/portal', portalRoutes);
 
 // Health check
 app.get('/', (req, res) => {
