@@ -1,15 +1,15 @@
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { ArrowPathIcon, DocumentCheckIcon, EyeIcon } from '@heroicons/react/24/outline';
 import SearchInput from '../../common/SearchInput/SearchInput';
 import Table from '../../common/Table/Table';
 import Modal from '../../common/Modal/Modal';
 import SelectInput from '../../common/SelectInput/SelectInput';
+import { useSchoolConfig } from '../../../contexts/SchoolConfigContext';
 import {
   exams,
   subjectMarks,
   examStudents,
   initialMarksData,
-  ACADEMIC_YEARS,
 } from '../../../data/examManagement/dummyData';
 
 const GRADE_SYSTEM = [
@@ -30,7 +30,12 @@ const getGrade = (pct) => {
 };
 
 const Results = () => {
-  const [academicYear, setAcademicYear] = useState('');
+  const { academic } = useSchoolConfig();
+
+  const centralYear = academic?.currentYear || '';
+  const centralYearOptions = centralYear ? [centralYear] : [];
+
+  const [academicYear, setAcademicYear] = useState(() => centralYear || '');
   const [examId, setExamId] = useState('');
   const [className, setClassName] = useState('');
   const [search, setSearch] = useState('');
@@ -38,6 +43,19 @@ const Results = () => {
   const [generated, setGenerated] = useState(false);
   const [showViewModal, setShowViewModal] = useState(false);
   const [viewStudent, setViewStudent] = useState(null);
+
+  useEffect(() => {
+    if (!centralYear || academicYear === centralYear) {
+      return undefined;
+    }
+    const timer = setTimeout(() => {
+      setAcademicYear(centralYear);
+      setExamId('');
+      setClassName('');
+      setGenerated(false);
+    }, 0);
+    return () => clearTimeout(timer);
+  }, [centralYear, academicYear]);
 
   const filteredExams = useMemo(() => {
     if (!academicYear) return [];
@@ -147,13 +165,13 @@ const Results = () => {
   }, [academicYear, examId, className]);
 
   const handleReset = useCallback(() => {
-    setAcademicYear('');
+    setAcademicYear(centralYear);
     setExamId('');
     setClassName('');
     setSearch('');
     setFilterStatus('');
     setGenerated(false);
-  }, []);
+  }, [centralYear]);
 
   const openView = (result) => {
     setViewStudent(result);
@@ -255,7 +273,7 @@ const Results = () => {
             name="academicYear"
             value={academicYear}
             onChange={(e) => { setAcademicYear(e.target.value); setExamId(''); setClassName(''); setGenerated(false); }}
-            options={ACADEMIC_YEARS}
+            options={centralYearOptions}
             placeholder="Select year"
             required
           />

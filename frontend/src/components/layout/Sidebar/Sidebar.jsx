@@ -401,7 +401,7 @@ const Sidebar = ({ isOpen, toggleSidebar }) => {
                       <CurrencyDollarIcon className="h-5 w-5 flex-shrink-0" />
                       <span className="text-sm font-medium">{t('feeManagement')}</span>
                     </div>
-                    <ChevronDownIcon className={`h-4 w-4 transition-transform duration-200 ${feeManagementOpen ? 'rotate-180' : ''}`} />
+                    <ChevronDownIcon className={`h-4 w-4 transition-transform duration-200 ${feeManagementOpen ? '' : 'rotate-180'}`} />
                   </button>
                   {feeManagementOpen && (
                     <div className="ml-3 mt-1 space-y-0.5 border-l-2 border-gray-200 dark:border-gray-700 pl-3">
@@ -512,7 +512,7 @@ const Sidebar = ({ isOpen, toggleSidebar }) => {
                       <UserGroupIcon className="h-5 w-5 flex-shrink-0" />
                       <span className="text-sm font-medium">{t('userAccounts')}</span>
                     </div>
-                    <ChevronDownIcon className={`h-4 w-4 transition-transform duration-200 ${userAccountsOpen ? 'rotate-180' : ''}`} />
+                    <ChevronDownIcon className={`h-4 w-4 transition-transform duration-200 ${userAccountsOpen ? '' : 'rotate-180'}`} />
                   </button>
                   {userAccountsOpen && (
                     <div className="ml-3 mt-1 space-y-0.5 border-l-2 border-gray-200 dark:border-gray-700 pl-3">

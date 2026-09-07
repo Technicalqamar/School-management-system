@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import {
   ArrowPathIcon, EyeIcon, PrinterIcon, ArrowDownTrayIcon,
   ClockIcon, AcademicCapIcon,
@@ -12,7 +12,6 @@ import {
   subjectMarks,
   examStudents,
   initialMarksData,
-  ACADEMIC_YEARS,
 } from '../../../data/examManagement/dummyData';
 import { computeStudentResult } from '../../../data/examManagement/resultUtils';
 import { useSchoolConfig } from '../../../contexts/SchoolConfigContext';
@@ -32,8 +31,12 @@ const toDataClass = (label) => {
 const STATUS_OPTIONS = ['Passed', 'Failed', 'Pending'];
 
 const ResultHistory = () => {
-  const { schoolInfo } = useSchoolConfig();
-  const [academicYear, setAcademicYear] = useState('');
+  const { schoolInfo, academic } = useSchoolConfig();
+
+  const centralYear = academic?.currentYear || '';
+  const centralYearOptions = centralYear ? [centralYear] : [];
+
+  const [academicYear, setAcademicYear] = useState(() => centralYear || '');
   const [examId, setExamId] = useState('');
   const [className, setClassName] = useState('');
   const [search, setSearch] = useState('');
@@ -42,6 +45,19 @@ const ResultHistory = () => {
   const [showViewModal, setShowViewModal] = useState(false);
   const [viewRecord, setViewRecord] = useState(null);
   const [exporting, setExporting] = useState(false);
+
+  useEffect(() => {
+    if (!centralYear || academicYear === centralYear) {
+      return undefined;
+    }
+    const timer = setTimeout(() => {
+      setAcademicYear(centralYear);
+      setExamId('');
+      setClassName('');
+      setGenerated(false);
+    }, 0);
+    return () => clearTimeout(timer);
+  }, [centralYear, academicYear]);
 
   const filteredExams = useMemo(() => {
     if (!academicYear) return [];
@@ -109,13 +125,13 @@ const ResultHistory = () => {
   }, [academicYear]);
 
   const handleReset = useCallback(() => {
-    setAcademicYear('');
+    setAcademicYear(centralYear);
     setExamId('');
     setClassName('');
     setSearch('');
     setFilterStatus('');
     setGenerated(false);
-  }, []);
+  }, [centralYear]);
 
   const openView = (record) => {
     setViewRecord(record);
@@ -413,7 +429,7 @@ const ResultHistory = () => {
             name="academicYear"
             value={academicYear}
             onChange={(e) => { setAcademicYear(e.target.value); setExamId(''); setClassName(''); setGenerated(false); }}
-            options={ACADEMIC_YEARS}
+            options={centralYearOptions}
             placeholder="Select year"
             required
           />

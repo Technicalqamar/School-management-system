@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { PlusIcon, ArrowPathIcon } from '@heroicons/react/24/outline';
 import toast from 'react-hot-toast';
 import SearchInput from '../../common/SearchInput/SearchInput';
@@ -10,13 +10,11 @@ import Input from '../../common/Input/Input';
 import DateInput from '../../common/DateInput/DateInput';
 import Button from '../../common/Button/Button';
 import ConfirmationModal from '../../common/ConfirmationModal/ConfirmationModal';
-import {
-  exams as initialExams,
-  CLASS_OPTIONS,
-  EXAM_TYPES,
-  ACADEMIC_YEARS,
-  STATUSES,
-} from '../../../data/examManagement/dummyData';
+import { CLASS_NAMES } from '../../../utils/classNames';
+import { useSchoolConfig } from '../../../contexts/SchoolConfigContext';
+import examService, { EXAM_TYPES, EXAM_STATUSES } from '../../../services/exam/exam.service';
+
+const ITEMS_PER_PAGE = 10;
 
 const initialForm = {
   name: '',
@@ -29,12 +27,31 @@ const initialForm = {
   status: 'Active',
 };
 
+const formatDate = (d) => {
+  if (!d) return '-';
+  const dt = new Date(d);
+  if (isNaN(dt.getTime())) return '-';
+  return dt.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+};
+
+const toDateInput = (d) => {
+  if (!d) return '';
+  const s = String(d);
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+  const dt = new Date(d);
+  if (isNaN(dt.getTime())) return '';
+  return dt.toISOString().slice(0, 10);
+};
+
 const ExamSetup = () => {
   const [search, setSearch] = useState('');
-  const [filterYear, setFilterYear] = useState('');
   const [filterType, setFilterType] = useState('');
   const [filterStatus, setFilterStatus] = useState('');
-  const [data, setData] = useState(initialExams);
+  const [data, setData] = useState([]);
+  const [pagination, setPagination] = useState({ totalExams: 0, totalPages: 0, currentPage: 1 });
+  const [currentPage, setCurrentPage] = useState(1);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(null);
   const [showModal, setShowModal] = useState(false);
   const [showViewModal, setShowViewModal] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
@@ -43,16 +60,58 @@ const ExamSetup = () => {
   const [deleteItem, setDeleteItem] = useState(null);
   const [form, setForm] = useState(initialForm);
   const [errors, setErrors] = useState({});
+  const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const debounceRef = useRef(null);
 
-  const filtered = useMemo(() => {
-    return data.filter((item) => {
-      const matchSearch = !search || item.name.toLowerCase().includes(search.toLowerCase());
-      const matchYear = !filterYear || item.academicYear === filterYear;
-      const matchType = !filterType || item.type === filterType;
-      const matchStatus = !filterStatus || item.status === filterStatus;
-      return matchSearch && matchYear && matchType && matchStatus;
-    });
-  }, [data, search, filterYear, filterType, filterStatus]);
+  const { academic } = useSchoolConfig();
+
+  const centralYear = academic?.currentYear || '';
+  const centralYearOptions = centralYear ? [centralYear] : [];
+
+  const formYearOptions = useMemo(() => {
+    const base = centralYear ? [centralYear] : [];
+    return form.academicYear && !base.includes(form.academicYear) ? [...base, form.academicYear] : base;
+  }, [centralYear, form.academicYear]);
+
+  const fetchExams = useCallback(async () => {
+    setLoading(true);
+    setLoadError(null);
+    try {
+      const params = { page: currentPage, limit: ITEMS_PER_PAGE };
+      if (search.trim()) params.search = search.trim();
+      if (centralYear) params.academicYear = centralYear;
+      if (filterType) params.type = filterType;
+      if (filterStatus) params.status = filterStatus;
+
+      const result = await examService.getAllExams(params);
+      setData(result.data?.exams || []);
+      setPagination(result.data?.pagination || { totalExams: 0, totalPages: 0, currentPage: 1 });
+    } catch (err) {
+      const msg = err.response?.data?.message || 'Failed to load exams';
+      setLoadError(msg);
+      toast.error(msg);
+    } finally {
+      setLoading(false);
+    }
+  }, [currentPage, search, centralYear, filterType, filterStatus]);
+
+  useEffect(() => {
+    debounceRef.current = setTimeout(() => {
+      fetchExams();
+    }, 400);
+    return () => clearTimeout(debounceRef.current);
+  }, [fetchExams]);
+
+  const handleSearchChange = (value) => {
+    setSearch(value);
+    setCurrentPage(1);
+  };
+
+  const handleFilterChange = (setter) => (e) => {
+    setter(e.target.value);
+    setCurrentPage(1);
+  };
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -84,31 +143,41 @@ const ExamSetup = () => {
     return Object.keys(newErrors).length === 0;
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!validate()) return;
-    const exam = {
-      name: form.name.trim(),
-      type: form.type,
-      academicYear: form.academicYear,
-      classes: form.classes,
-      startDate: form.startDate,
-      endDate: form.endDate,
-      description: form.description.trim(),
-      status: form.status,
-    };
-    if (editItem) {
-      setData((prev) => prev.map((item) => (item.id === editItem.id ? { ...item, ...exam } : item)));
-      toast.success('Exam updated successfully');
-    } else {
-      setData((prev) => [...prev, { id: Date.now(), ...exam }]);
-      toast.success('Exam added successfully');
+    setSaving(true);
+    try {
+      const payload = {
+        name: form.name.trim(),
+        type: form.type,
+        academicYear: form.academicYear,
+        classes: form.classes,
+        startDate: form.startDate,
+        endDate: form.endDate,
+        description: form.description.trim(),
+        status: form.status,
+      };
+
+      if (editItem) {
+        await examService.updateExam(editItem._id, payload);
+        toast.success('Exam updated successfully');
+      } else {
+        await examService.createExam(payload);
+        toast.success('Exam added successfully');
+      }
+      closeModal();
+      await fetchExams();
+    } catch (err) {
+      const msg = err.response?.data?.message || 'Failed to save exam';
+      toast.error(msg);
+    } finally {
+      setSaving(false);
     }
-    closeModal();
   };
 
   const openAdd = () => {
     setEditItem(null);
-    setForm(initialForm);
+    setForm({ ...initialForm, academicYear: centralYear });
     setErrors({});
     setShowModal(true);
   };
@@ -125,8 +194,8 @@ const ExamSetup = () => {
       type: item.type,
       academicYear: item.academicYear,
       classes: [...item.classes],
-      startDate: item.startDate,
-      endDate: item.endDate,
+      startDate: toDateInput(item.startDate),
+      endDate: toDateInput(item.endDate),
       description: item.description || '',
       status: item.status,
     });
@@ -137,7 +206,7 @@ const ExamSetup = () => {
   const closeModal = () => {
     setShowModal(false);
     setEditItem(null);
-    setForm(initialForm);
+    setForm({ ...initialForm, academicYear: centralYear });
     setErrors({});
   };
 
@@ -146,23 +215,31 @@ const ExamSetup = () => {
     setShowDeleteModal(true);
   };
 
-  const confirmDelete = () => {
-    setData((prev) => prev.filter((item) => item.id !== deleteItem.id));
-    setShowDeleteModal(false);
-    setDeleteItem(null);
-    toast.success('Exam deleted successfully');
+  const confirmDelete = async () => {
+    setDeleting(true);
+    try {
+      await examService.deleteExam(deleteItem._id);
+      toast.success('Exam deleted successfully');
+      setShowDeleteModal(false);
+      setDeleteItem(null);
+      if (data.length === 1 && currentPage > 1) {
+        setCurrentPage(currentPage - 1);
+      } else {
+        await fetchExams();
+      }
+    } catch (err) {
+      const msg = err.response?.data?.message || 'Failed to delete exam';
+      toast.error(msg);
+    } finally {
+      setDeleting(false);
+    }
   };
 
   const handleReset = () => {
     setSearch('');
-    setFilterYear('');
     setFilterType('');
     setFilterStatus('');
-  };
-
-  const formatDate = (d) => {
-    if (!d) return '-';
-    return new Date(d + 'T00:00:00').toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+    setCurrentPage(1);
   };
 
   const tableColumns = [
@@ -224,6 +301,52 @@ const ExamSetup = () => {
     </>
   );
 
+  const renderPagination = () => {
+    if (pagination.totalPages <= 1) return null;
+
+    const pages = [];
+    for (let i = 1; i <= pagination.totalPages; i++) {
+      pages.push(i);
+    }
+
+    return (
+      <div className="flex items-center justify-between pt-4">
+        <p className="text-sm text-gray-500 dark:text-gray-400">
+          Page {Math.min(pagination.totalExams, (currentPage - 1) * ITEMS_PER_PAGE + 1)}&ndash;{Math.min(currentPage * ITEMS_PER_PAGE, pagination.totalExams)} of {pagination.totalExams}
+        </p>
+        <div className="flex items-center gap-1">
+          <button
+            onClick={() => setCurrentPage(Math.max(1, currentPage - 1))}
+            disabled={currentPage === 1}
+            className="px-3 py-1.5 rounded-lg text-sm font-medium border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-40 disabled:cursor-not-allowed transition-all cursor-pointer"
+          >
+            Previous
+          </button>
+          {pages.map((page) => (
+            <button
+              key={page}
+              onClick={() => setCurrentPage(page)}
+              className={`w-9 h-9 rounded-lg text-sm font-medium transition-all cursor-pointer ${
+                currentPage === page
+                  ? 'bg-blue-600 text-white shadow-sm'
+                  : 'border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'
+              }`}
+            >
+              {page}
+            </button>
+          ))}
+          <button
+            onClick={() => setCurrentPage(Math.min(pagination.totalPages, currentPage + 1))}
+            disabled={currentPage === pagination.totalPages}
+            className="px-3 py-1.5 rounded-lg text-sm font-medium border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-40 disabled:cursor-not-allowed transition-all cursor-pointer"
+          >
+            Next
+          </button>
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -244,27 +367,27 @@ const ExamSetup = () => {
       <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-4">
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 mb-4">
           <div className="lg:col-span-2">
-            <SearchInput placeholder="Search exams..." value={search} onChange={setSearch} />
+            <SearchInput placeholder="Search exams..." value={search} onChange={handleSearchChange} />
           </div>
           <SelectInput
             name="filterYear"
-            value={filterYear}
-            onChange={(e) => setFilterYear(e.target.value)}
-            options={ACADEMIC_YEARS}
+            value={centralYear}
+            disabled
+            options={centralYearOptions}
             placeholder="Academic Year"
           />
           <SelectInput
             name="filterType"
             value={filterType}
-            onChange={(e) => setFilterType(e.target.value)}
+            onChange={handleFilterChange(setFilterType)}
             options={EXAM_TYPES}
             placeholder="Exam Type"
           />
           <SelectInput
             name="filterStatus"
             value={filterStatus}
-            onChange={(e) => setFilterStatus(e.target.value)}
-            options={STATUSES}
+            onChange={handleFilterChange(setFilterStatus)}
+            options={EXAM_STATUSES}
             placeholder="Status"
           />
         </div>
@@ -279,7 +402,30 @@ const ExamSetup = () => {
       </div>
 
       <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-4">
-        <Table columns={tableColumns} data={filtered} renderRow={renderRow} />
+        {loading ? (
+          <div className="text-center py-16 text-gray-400 dark:text-gray-500">
+            <p className="text-sm">Loading exams...</p>
+          </div>
+        ) : loadError ? (
+          <div className="text-center py-16 text-red-500 dark:text-red-400 bg-white dark:bg-gray-800 rounded-xl border border-red-200 dark:border-red-900">
+            <p className="text-sm mb-3">{loadError}</p>
+            <button
+              onClick={fetchExams}
+              className="px-4 py-2 rounded-lg text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 transition-colors cursor-pointer"
+            >
+              Retry
+            </button>
+          </div>
+        ) : data.length === 0 ? (
+          <div className="text-center py-16 text-gray-400 dark:text-gray-500">
+            <p className="text-sm">No exams found</p>
+          </div>
+        ) : (
+          <>
+            <Table columns={tableColumns} data={data} renderRow={renderRow} />
+            {renderPagination()}
+          </>
+        )}
       </div>
 
       <Modal
@@ -317,7 +463,7 @@ const ExamSetup = () => {
             name="academicYear"
             value={form.academicYear}
             onChange={handleChange}
-            options={ACADEMIC_YEARS}
+            options={formYearOptions}
             placeholder="Select year"
             required
           />
@@ -330,7 +476,7 @@ const ExamSetup = () => {
             Classes <span className="text-red-500">*</span>
           </label>
           <div className="grid grid-cols-3 sm:grid-cols-4 gap-2 p-3 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 max-h-40 overflow-y-auto">
-            {CLASS_OPTIONS.map((cls) => (
+            {CLASS_NAMES.map((cls) => (
               <label
                 key={cls}
                 className={`flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-sm cursor-pointer transition-colors ${
@@ -393,13 +539,13 @@ const ExamSetup = () => {
           name="status"
           value={form.status}
           onChange={handleChange}
-          options={STATUSES}
+          options={EXAM_STATUSES}
           placeholder="Select status"
         />
 
         <div className="flex gap-3 mt-6">
-          <Button variant="secondary" onClick={closeModal}>Cancel</Button>
-          <Button onClick={handleSave}>{editItem ? 'Update Exam' : 'Add Exam'}</Button>
+          <Button variant="secondary" onClick={closeModal} disabled={saving}>Cancel</Button>
+          <Button onClick={handleSave} loading={saving}>{editItem ? 'Update Exam' : 'Add Exam'}</Button>
         </div>
       </Modal>
 
@@ -467,12 +613,13 @@ const ExamSetup = () => {
 
       <ConfirmationModal
         isOpen={showDeleteModal}
-        onClose={() => { setShowDeleteModal(false); setDeleteItem(null); }}
+        onClose={() => { if (!deleting) { setShowDeleteModal(false); setDeleteItem(null); } }}
         title="Delete Exam"
         message={`Are you sure you want to delete "${deleteItem?.name}"? This action cannot be undone.`}
         confirmLabel="Delete"
         variant="danger"
         onConfirm={confirmDelete}
+        loading={deleting}
       />
     </div>
   );

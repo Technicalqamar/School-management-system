@@ -1,5 +1,11 @@
 import { ChevronDownIcon } from '@heroicons/react/24/outline';
 
+const optionLabel = (opt) => {
+  if (typeof opt !== 'string') return String(opt);
+  const separatorIndex = opt.indexOf('::');
+  return separatorIndex === -1 ? opt : opt.slice(separatorIndex + 2);
+};
+
 const SelectInput = ({ label, name, value, onChange, options, placeholder = 'Select', required = false, disabled = false, className = '' }) => {
   return (
     <div className={`mb-4 ${className}`}>
@@ -24,7 +30,7 @@ const SelectInput = ({ label, name, value, onChange, options, placeholder = 'Sel
         >
           <option value="" disabled>{placeholder}</option>
           {options.map((opt) => (
-            <option key={opt} value={opt}>{opt}</option>
+            <option key={opt} value={opt}>{optionLabel(opt)}</option>
           ))}
         </select>
         <ChevronDownIcon className={`absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 pointer-events-none ${disabled ? 'text-gray-300 dark:text-gray-600' : 'text-gray-400'}`} />

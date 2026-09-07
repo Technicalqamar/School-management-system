@@ -4,8 +4,6 @@ export const CLASS_OPTIONS = [
   'Class 6', 'Class 7', 'Class 8', 'Class 9', 'Class 10',
 ];
 
-export const EXAM_TYPES = ['Monthly Test', 'Mid Term', 'Final Term'];
-
 export const ACADEMIC_YEARS = ['2026', '2025'];
 
 export const STATUSES = ['Active', 'Inactive'];
@@ -125,29 +123,6 @@ export const subjectMarks = [
   { id: 16, subjectName: 'Mathematics', subjectCode: 'MATH-701', academicYear: '2026', className: 'Class 7', examId: 1, totalMarks: 50, passingMarks: 20, description: 'Monthly test - algebra basics', status: 'Inactive' },
   { id: 17, subjectName: 'Islamiat', subjectCode: 'ISL-701', academicYear: '2026', className: 'Class 7', examId: 1, totalMarks: 50, passingMarks: 20, description: 'Monthly test - Islamic studies', status: 'Inactive' },
   { id: 18, subjectName: 'Physical Education', subjectCode: 'PE-501', academicYear: '2026', className: 'Class 5', examId: 3, totalMarks: 50, passingMarks: 20, description: 'Fitness and sports assessment', status: 'Active' },
-];
-
-export const examSchedules = [
-  { id: 1, examId: 3, academicYear: '2026', className: 'Class 1', subjectName: 'Mathematics', examDate: '2026-03-20', startTime: '09:00', endTime: '11:00', room: 'Room 101', status: 'Active', notes: 'Bring geometric instruments' },
-  { id: 2, examId: 3, academicYear: '2026', className: 'Class 1', subjectName: 'English', examDate: '2026-03-21', startTime: '09:00', endTime: '11:00', room: 'Room 101', status: 'Active', notes: '' },
-  { id: 3, examId: 3, academicYear: '2026', className: 'Class 1', subjectName: 'Urdu', examDate: '2026-03-22', startTime: '09:00', endTime: '11:00', room: 'Room 101', status: 'Active', notes: '' },
-  { id: 4, examId: 3, academicYear: '2026', className: 'Class 1', subjectName: 'Science', examDate: '2026-03-24', startTime: '09:00', endTime: '10:30', room: 'Room 101', status: 'Active', notes: '' },
-  { id: 5, examId: 3, academicYear: '2026', className: 'Class 5', subjectName: 'Mathematics', examDate: '2026-03-20', startTime: '09:00', endTime: '11:30', room: 'Room 205', status: 'Active', notes: 'Calculators not allowed' },
-  { id: 6, examId: 3, academicYear: '2026', className: 'Class 5', subjectName: 'English', examDate: '2026-03-21', startTime: '09:00', endTime: '11:30', room: 'Room 205', status: 'Active', notes: '' },
-  { id: 7, examId: 3, academicYear: '2026', className: 'Class 5', subjectName: 'Science', examDate: '2026-03-23', startTime: '09:00', endTime: '11:30', room: 'Lab 1', status: 'Active', notes: 'Lab-based practical included' },
-  { id: 8, examId: 3, academicYear: '2026', className: 'Class 5', subjectName: 'Social Studies', examDate: '2026-03-25', startTime: '09:00', endTime: '10:30', room: 'Room 205', status: 'Active', notes: '' },
-  { id: 9, examId: 3, academicYear: '2026', className: 'Class 5', subjectName: 'Physical Education', examDate: '2026-03-26', startTime: '10:00', endTime: '11:30', room: 'Sports Hall', status: 'Active', notes: 'Wear PE uniform' },
-  { id: 10, examId: 5, academicYear: '2026', className: 'Class 10', subjectName: 'Mathematics', examDate: '2026-05-15', startTime: '09:00', endTime: '12:00', room: 'Hall A', status: 'Active', notes: 'Scientific calculators allowed' },
-  { id: 11, examId: 5, academicYear: '2026', className: 'Class 10', subjectName: 'English', examDate: '2026-05-17', startTime: '09:00', endTime: '12:00', room: 'Hall A', status: 'Active', notes: '' },
-  { id: 12, examId: 5, academicYear: '2026', className: 'Class 10', subjectName: 'Science', examDate: '2026-05-19', startTime: '09:00', endTime: '12:00', room: 'Hall B', status: 'Active', notes: 'Includes practical component' },
-  { id: 13, examId: 5, academicYear: '2026', className: 'Class 10', subjectName: 'Computer Science', examDate: '2026-05-21', startTime: '09:00', endTime: '11:00', room: 'Computer Lab', status: 'Active', notes: 'Practical exam on computers' },
-  { id: 14, examId: 1, academicYear: '2026', className: 'Class 7', subjectName: 'Mathematics', examDate: '2026-01-15', startTime: '09:00', endTime: '10:30', room: 'Room 302', status: 'Active', notes: '' },
-  { id: 15, examId: 1, academicYear: '2026', className: 'Class 7', subjectName: 'Islamiat', examDate: '2026-01-16', startTime: '09:00', endTime: '10:30', room: 'Room 302', status: 'Active', notes: '' },
-  { id: 16, examId: 6, academicYear: '2025', className: 'Class 3', subjectName: 'Mathematics', examDate: '2025-03-18', startTime: '09:00', endTime: '10:30', room: 'Room 103', status: 'Active', notes: '' },
-  { id: 17, examId: 6, academicYear: '2025', className: 'Class 3', subjectName: 'English', examDate: '2025-03-19', startTime: '09:00', endTime: '10:30', room: 'Room 103', status: 'Active', notes: '' },
-  { id: 18, examId: 7, academicYear: '2025', className: 'Class 3', subjectName: 'General Knowledge', examDate: '2025-05-20', startTime: '09:00', endTime: '10:00', room: 'Room 103', status: 'Active', notes: '' },
-  { id: 19, examId: 2, academicYear: '2026', className: 'Class 8', subjectName: 'Mathematics', examDate: '2026-02-12', startTime: '09:00', endTime: '10:30', room: 'Room 305', status: 'Active', notes: '' },
-  { id: 20, examId: 4, academicYear: '2026', className: 'Montessori', subjectName: 'General Knowledge', examDate: '2026-04-10', startTime: '09:00', endTime: '10:00', room: 'Room K1', status: 'Inactive', notes: '' },
 ];
 
 export const examStudents = [
