@@ -116,10 +116,6 @@ const CollectFee = ({ onDataChange }) => {
     try {
       const result = await studentService.getAllStudents({ search: q, status: 'Active', limit: 50 });
       const students = (result.data?.students || [])
-        .filter((s) => {
-          const id = (s.studentId || '').toLowerCase();
-          return id === q || id.includes(q);
-        })
         .map((s) => ({
           _id: s._id,
           id: s.studentId,
@@ -287,7 +283,7 @@ const CollectFee = ({ onDataChange }) => {
       <div>
         <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Collect Fee</h1>
         <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-          Search for a student by ID and collect their fee payment
+          Search for a student by ID or Name and collect their fee payment
         </p>
       </div>
 
@@ -297,7 +293,7 @@ const CollectFee = ({ onDataChange }) => {
             <MagnifyingGlassIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400 pointer-events-none" />
             <input
               type="text"
-              placeholder="Search by Student ID..."
+              placeholder="Search by Student ID or Name..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               onKeyDown={handleSearchKeyDown}

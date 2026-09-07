@@ -148,6 +148,7 @@ const ar = {
   searchByName: 'البحث بالاسم',
   searchTeacherName: 'البحث عن اسم المعلم',
   searchNameOrId: 'البحث بالاسم أو الرقم...',
+  searchByStudentIdOrName: 'البحث برقم الطالب أو الاسم',
   previous: 'السابق',
   page: 'صفحة',
   of: 'من',

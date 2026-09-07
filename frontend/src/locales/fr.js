@@ -148,6 +148,7 @@ const fr = {
   searchByName: 'Rechercher par nom',
   searchTeacherName: "Rechercher le nom de l'enseignant",
   searchNameOrId: 'Rechercher par nom ou ID...',
+  searchByStudentIdOrName: "Rechercher par ID ou nom de l'étudiant",
   previous: 'Précédent',
   page: 'Page',
   of: 'sur',

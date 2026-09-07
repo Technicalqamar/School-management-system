@@ -83,7 +83,13 @@ const OutstandingDues = () => {
   const filteredStudents = useMemo(() => {
     if (!hasSearched || !searchStudentId.trim()) return studentsWithDues;
     const q = searchStudentId.trim().toLowerCase();
-    return studentsWithDues.filter((entry) => entry.studentId.toLowerCase() === q);
+
+    return studentsWithDues.filter((entry) => {
+      const idMatches = (entry.studentId || '').toLowerCase() === q;
+      const nameMatches = (entry.studentName || '').toLowerCase().includes(q);
+      const fatherMatches = (entry.student?.fatherName || '').toLowerCase().includes(q);
+      return idMatches || nameMatches || fatherMatches;
+    });
   }, [studentsWithDues, searchStudentId, hasSearched]);
 
   const handleSearch = () => {
@@ -347,7 +353,7 @@ const OutstandingDues = () => {
                   <MagnifyingGlassIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400 pointer-events-none" />
                   <input
                     type="text"
-                    placeholder="Search by Student ID..."
+                    placeholder="Search by Student ID or Name..."
                     value={searchStudentId}
                     onChange={(e) => setSearchStudentId(e.target.value)}
                     onKeyDown={handleSearchKeyDown}
@@ -370,7 +376,7 @@ const OutstandingDues = () => {
               {hasSearched && filteredStudents.length === 0 ? (
                 <div className="py-8 text-center">
                   <ExclamationTriangleIcon className="h-10 w-10 text-gray-300 dark:text-gray-600 mx-auto mb-2" />
-                  <p className="text-gray-500 dark:text-gray-400 text-sm">No student found with ID "{searchStudentId}"</p>
+                  <p className="text-gray-500 dark:text-gray-400 text-sm">No student found matching "{searchStudentId}"</p>
                 </div>
               ) : (
                 <>

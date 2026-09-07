@@ -52,7 +52,15 @@ const AllStudents = () => {
       if (classFilter !== 'All Classes') params.class = classFilter;
       if (statusFilter !== 'All') params.status = statusFilter;
       if (search.trim()) params.search = search.trim();
-      if (studentIdFilter.trim()) params.studentId = studentIdFilter.trim();
+
+      const idTerm = studentIdFilter.trim();
+      const isStudentIdFormat = /^\d{1,6}$/.test(idTerm) || /^STD-\d{6}$/i.test(idTerm);
+
+      if (isStudentIdFormat) {
+        params.studentId = idTerm;
+      } else if (idTerm) {
+        params.search = idTerm;
+      }
 
       const result = await studentService.getAllStudents(params);
       setStudents(result.data.students);
@@ -234,7 +242,7 @@ const AllStudents = () => {
         <h1 className="text-2xl font-bold text-gray-900 dark:text-white">{t('studentManagement')}</h1>
         <div className="w-full sm:w-56">
           <SearchInput
-            placeholder={t('studentIdLabel')}
+            placeholder={t('searchByStudentIdOrName')}
             value={studentIdFilter}
             onChange={(v) => { setStudentIdFilter(v); setCurrentPage(1); }}
           />

@@ -148,6 +148,7 @@ const ur = {
   searchByName: 'نام سے تلاش کریں',
   searchTeacherName: 'استاد کا نام تلاش کریں',
   searchNameOrId: 'نام یا شناخت سے تلاش کریں...',
+  searchByStudentIdOrName: 'طلبہ شناخت یا نام سے تلاش کریں',
   previous: 'پچھلا',
   page: 'صفحہ',
   of: 'از',

@@ -170,6 +170,7 @@ const en = {
   searchByName: 'Search By Name',
   searchTeacherName: 'Search Teacher Name',
   searchNameOrId: 'Search by name or ID...',
+  searchByStudentIdOrName: 'Search by Student ID or Name',
   previous: 'Previous',
   page: 'Page',
   of: 'of',

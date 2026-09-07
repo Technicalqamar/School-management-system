@@ -39,6 +39,22 @@ const deleteFromCloudinary = async (publicId) => {
   }
 };
 
+const escapeRegex = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+const normalizeStudentIdTerm = (term) => {
+  const value = String(term || '').trim().toUpperCase();
+
+  if (/^STD-?\d{6}$/.test(value)) {
+    return `STD-${value.replace(/^STD-?/, '')}`;
+  }
+
+  if (/^\d+$/.test(value)) {
+    return `STD-${value.padStart(6, '0')}`;
+  }
+
+  return null;
+};
+
 const createStudent = async (data, file, baseUrl = '') => {
   if (!file) {
     throw new ApiError(400, 'Student image is required');
@@ -105,13 +121,38 @@ const getAllStudents = async (query) => {
     filter.studentId = idTerm;
   }
 
-  if (search && search.trim()) {
-    const term = search.trim();
-    filter.$or = [
-      { fullName: { $regex: term, $options: 'i' } },
-      { fatherName: { $regex: term, $options: 'i' } },
-      { studentId: { $regex: term, $options: 'i' } },
-    ];
+  if (search) {
+    const term = String(search).trim();
+
+    if (term) {
+      const exactId = normalizeStudentIdTerm(term);
+
+      if (exactId) {
+        const exactStudent = await Student.findOne({ ...filter, studentId: exactId });
+
+        if (exactStudent) {
+          return {
+            students: [exactStudent],
+            totalStudents: 1,
+            totalPages: 1,
+            currentPage: 1,
+          };
+        }
+      }
+
+      const pattern = new RegExp(escapeRegex(term), 'i');
+
+      const orClauses = [
+        { fullName: pattern },
+        { fatherName: pattern },
+      ];
+
+      if (!exactId) {
+        orClauses.push({ studentId: pattern });
+      }
+
+      filter.$or = orClauses;
+    }
   }
 
   const [students, totalStudents] = await Promise.all([

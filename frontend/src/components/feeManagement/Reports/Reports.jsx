@@ -876,7 +876,7 @@ const Reports = () => {
         {scope === 'Student' && (
           <div className="mt-4 pt-4 border-t border-gray-100 dark:border-gray-700">
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
-              Search Student
+              Search by Student ID or Name
             </label>
             {selectedStudent ? (
               <div className="flex items-center justify-between p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-800">
@@ -917,6 +917,7 @@ const Reports = () => {
                           className="w-full px-4 py-3 text-left hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors border-b border-gray-100 dark:border-gray-700 last:border-b-0 cursor-pointer"
                         >
                           <p className="text-sm font-medium text-gray-900 dark:text-white">{s.name}</p>
+                          <p className="text-xs text-gray-500 dark:text-gray-400">Father: {s.fatherName || '-'}</p>
                           <p className="text-xs text-gray-500 dark:text-gray-400">{s.id} &middot; {s.class}</p>
                         </button>
                       ))

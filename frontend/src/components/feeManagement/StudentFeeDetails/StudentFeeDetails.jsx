@@ -46,9 +46,21 @@ const formatDate = (val) => {
 
 const getInitials = (name) => name.split(' ').map((n) => n[0]).join('').slice(0, 2).toUpperCase();
 
+const buildStudentCard = (student) => ({
+  _id: student._id,
+  id: student.studentId,
+  name: student.fullName,
+  fatherName: student.fatherName,
+  class: student.class,
+  gender: student.gender,
+  fatherPhone: student.fatherPhone,
+  admissionDate: formatDate(student.admissionDate),
+});
+
 const StudentFeeDetails = () => {
   const { schoolInfo, branding, academic } = useSchoolConfig();
   const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState([]);
   const [foundStudent, setFoundStudent] = useState(null);
   const [hasSearched, setHasSearched] = useState(false);
   const [searching, setSearching] = useState(false);
@@ -95,6 +107,7 @@ const StudentFeeDetails = () => {
     const q = searchQuery.trim().toLowerCase();
     if (!q) {
       setFoundStudent(null);
+      setSearchResults([]);
       setHasSearched(false);
       setStudentPayments([]);
       setPaymentsLoading(false);
@@ -107,34 +120,33 @@ const StudentFeeDetails = () => {
     try {
       const result = await studentService.getAllStudents({ search: q, status: 'Active', limit: 50 });
       const students = result.data?.students || [];
-      const student = students.find((s) => {
-        const id = (s.studentId || '').toLowerCase();
-        const name = (s.fullName || '').toLowerCase();
-        return id === q || id.includes(q) || name === q || name.includes(q);
-      }) || null;
+      setSearchResults(students);
 
-      setFoundStudent(student ? {
-        _id: student._id,
-        id: student.studentId,
-        name: student.fullName,
-        fatherName: student.fatherName,
-        class: student.class,
-        gender: student.gender,
-        fatherPhone: student.fatherPhone,
-        admissionDate: formatDate(student.admissionDate),
-      } : null);
-      if (!student) setPaymentsLoading(false);
+      if (students.length === 1) {
+        setFoundStudent(buildStudentCard(students[0]));
+        setSearchResults([]);
+      } else {
+        setFoundStudent(null);
+        if (students.length === 0) setPaymentsLoading(false);
+      }
+
       setHasSearched(true);
     } catch (err) {
       const msg = err.response?.data?.message || 'Failed to search students';
       toast.error(msg);
       setFoundStudent(null);
+      setSearchResults([]);
       setPaymentsLoading(false);
       setHasSearched(true);
     } finally {
       setSearching(false);
     }
   }, [searchQuery]);
+
+  const selectSearchResult = (student) => {
+    setSearchResults([]);
+    setFoundStudent(buildStudentCard(student));
+  };
 
   const handleSearchKeyDown = (e) => {
     if (e.key === 'Enter') handleSearch();
@@ -385,7 +397,7 @@ const StudentFeeDetails = () => {
             <MagnifyingGlassIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400 pointer-events-none" />
             <input
               type="text"
-              placeholder="Search by Student ID..."
+              placeholder="Search by Student ID or Name..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               onKeyDown={handleSearchKeyDown}
@@ -402,10 +414,38 @@ const StudentFeeDetails = () => {
         </div>
       </div>
 
-      {hasSearched && !foundStudent && (
+      {hasSearched && !foundStudent && searchResults.length > 0 && (
+        <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-4">
+          <h3 className="text-sm font-semibold text-gray-900 dark:text-white uppercase tracking-wider mb-2">Select a student</h3>
+          <div className="divide-y divide-gray-100 dark:divide-gray-700">
+            {searchResults.map((s) => (
+              <button
+                key={s._id}
+                type="button"
+                onClick={() => selectSearchResult(s)}
+                className="w-full flex items-center gap-3 py-3 text-left hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors cursor-pointer"
+              >
+                <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-600 to-blue-800 flex items-center justify-center text-white font-bold text-xs flex-shrink-0">
+                  {getInitials(s.fullName)}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-medium text-gray-900 dark:text-white">{s.fullName}</p>
+                  <p className="text-xs text-gray-500 dark:text-gray-400 truncate">Father: {s.fatherName}</p>
+                </div>
+                <div className="text-right shrink-0">
+                  <p className="text-xs font-mono text-gray-500 dark:text-gray-400">{s.studentId}</p>
+                  <p className="text-xs text-gray-500 dark:text-gray-400">{s.class}</p>
+                </div>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {hasSearched && !foundStudent && searchResults.length === 0 && (
         <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-8 text-center">
           <UserIcon className="h-12 w-12 text-gray-300 dark:text-gray-600 mx-auto mb-3" />
-          <p className="text-gray-500 dark:text-gray-400 text-sm">No student found with the given ID</p>
+          <p className="text-gray-500 dark:text-gray-400 text-sm">No student found matching your search.</p>
         </div>
       )}
 
