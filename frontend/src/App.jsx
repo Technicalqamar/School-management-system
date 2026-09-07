@@ -20,6 +20,7 @@ import StudentDashboard from './pages/student/StudentDashboard';
 import AdminLayout from './layouts/AdminLayout';
 import AdminDashboard from './pages/admin/AdminDashboard';
 import StudentManagement from './pages/admin/StudentManagement';
+import StudentProfilePage from './pages/admin/StudentProfile';
 import TeacherManagement from './pages/admin/TeacherManagement';
 import ClassManagement from './pages/admin/ClassManagement';
 import SubjectManagement from './pages/admin/SubjectManagement';
@@ -96,6 +97,7 @@ function AppContent() {
           <Route path="/admin" element={<AdminLayout />}>
             <Route index element={<AdminDashboard />} />
             <Route path="students" element={<StudentManagement />} />
+            <Route path="students/:studentId" element={<StudentProfilePage />} />
             <Route path="teachers" element={<TeacherManagement />} />
             <Route path="classes" element={<ClassManagement />} />
             <Route path="subjects" element={<SubjectManagement />} />

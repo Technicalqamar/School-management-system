@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useTranslation } from '../../../hooks/useLocalization';
 import toast from 'react-hot-toast';
 import { UsersIcon, UserGroupIcon, UserMinusIcon, UserPlusIcon, ArrowPathIcon } from '@heroicons/react/24/outline';
@@ -10,7 +11,6 @@ import Table from '../../common/Table/Table';
 import StatusBadge from '../../common/StatusBadge/StatusBadge';
 import ActionButtons from '../../common/ActionButtons/ActionButtons';
 import StudentCard from '../../common/StudentCard/StudentCard';
-import StudentViewModal from '../../common/StudentViewModal/StudentViewModal';
 import EditStudentModal from '../../common/EditStudentModal/EditStudentModal';
 import ConfirmationModal from '../../common/ConfirmationModal/ConfirmationModal';
 import { getImageUrl } from '../../../utils/imageUrl';
@@ -22,6 +22,7 @@ const ITEMS_PER_PAGE = 10;
 
 const AllStudents = () => {
   const { t } = useTranslation();
+  const navigate = useNavigate();
 
   const classOptions = [t('allClasses'), ...CLASS_NAMES];
 
@@ -37,7 +38,6 @@ const AllStudents = () => {
   const [pagination, setPagination] = useState({ totalStudents: 0, totalPages: 0, currentPage: 1 });
   const [loading, setLoading] = useState(true);
   const [fetchError, setFetchError] = useState('');
-  const [selectedStudent, setSelectedStudent] = useState(null);
   const [editingStudent, setEditingStudent] = useState(null);
   const [deletingStudent, setDeletingStudent] = useState(null);
   const [deleteLoading, setDeleteLoading] = useState(false);
@@ -150,7 +150,7 @@ const AllStudents = () => {
       </td>
       <td className="px-4 py-3 text-right">
         <ActionButtons
-          onView={() => setSelectedStudent(student)}
+          onView={() => navigate(`/admin/students/${student.studentId}`, { state: { student } })}
           onEdit={() => setEditingStudent(student)}
           onDelete={() => setDeletingStudent(student)}
         />
@@ -318,7 +318,7 @@ const AllStudents = () => {
                     <StudentCard
                       key={student.studentId}
                       student={student}
-                      onView={() => setSelectedStudent(student)}
+                      onView={() => navigate(`/admin/students/${student.studentId}`, { state: { student } })}
                       onEdit={() => setEditingStudent(student)}
                       onDelete={() => setDeletingStudent(student)}
                     />
@@ -330,12 +330,6 @@ const AllStudents = () => {
           )}
         </>
       )}
-
-      <StudentViewModal
-        student={selectedStudent}
-        isOpen={!!selectedStudent}
-        onClose={() => setSelectedStudent(null)}
-      />
 
       <EditStudentModal
         key={editingStudent?.studentId || 'new'}
