@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import toast from 'react-hot-toast';
 import { UsersIcon, UserGroupIcon, UserMinusIcon, UserPlusIcon, ArrowPathIcon } from '@heroicons/react/24/outline';
 import StatCard from '../../common/StatCard/StatCard';
@@ -37,47 +37,45 @@ const AllTeachers = ({ onSuccess }) => {
   const { t } = useTranslation();
   const statusOptions = [t('all'), t('active'), t('inactive')];
   const [view, setView] = useState('table');
-  const [teacherIdSearch, setTeacherIdSearch] = useState('');
+  const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState(t('all'));
-  const [nameSearch, setNameSearch] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const [selectedTeacher, setSelectedTeacher] = useState(null);
   const [editingTeacher, setEditingTeacher] = useState(null);
   const [deletingTeacher, setDeletingTeacher] = useState(null);
   const [teachers, setTeachers] = useState([]);
+  const [pagination, setPagination] = useState({ totalTeachers: 0, totalPages: 0, currentPage: 1 });
   const [loading, setLoading] = useState(true);
+  const debounceRef = useRef(null);
 
   const fetchTeachers = useCallback(async () => {
     setLoading(true);
     try {
-      const result = await teacherService.getAllTeachers({ page: currentPage, limit: ITEMS_PER_PAGE, status: statusFilter !== 'All' ? statusFilter : undefined, search: nameSearch || undefined });
+      const params = { page: currentPage, limit: ITEMS_PER_PAGE };
+      if (statusFilter !== 'All') params.status = statusFilter;
+      if (search.trim()) params.search = search.trim();
+
+      const result = await teacherService.getAllTeachers(params);
       setTeachers(result.data?.teachers || []);
+      setPagination(result.data?.pagination || { totalTeachers: 0, totalPages: 0, currentPage: 1 });
     } catch (err) {
       const msg = err.response?.data?.message || t('failedToLoad');
       toast.error(msg);
     } finally {
       setLoading(false);
     }
-  }, [currentPage, statusFilter, nameSearch]);
+  }, [currentPage, statusFilter, search]);
 
   useEffect(() => {
-    Promise.resolve().then(() => fetchTeachers());
-  }, [fetchTeachers]);
-
-  const filteredTeachers = teachers.filter((t) => {
-    if (teacherIdSearch && !t.teacherId?.toLowerCase().includes(teacherIdSearch.toLowerCase())) return false;
-    return true;
-  });
-
-  const totalPages = Math.ceil(filteredTeachers.length / ITEMS_PER_PAGE);
-  const paginatedTeachers = filteredTeachers.slice(
-    (currentPage - 1) * ITEMS_PER_PAGE,
-    currentPage * ITEMS_PER_PAGE
-  );
+    debounceRef.current = setTimeout(() => {
+      fetchTeachers();
+    }, 400);
+    return () => clearTimeout(debounceRef.current);
+  }, [currentPage, statusFilter, search, fetchTeachers]);
 
   const handleReset = () => {
     setStatusFilter(t('all'));
-    setNameSearch('');
+    setSearch('');
     setCurrentPage(1);
   };
 
@@ -155,17 +153,17 @@ const AllTeachers = ({ onSuccess }) => {
   };
 
   const renderPagination = () => {
-    if (totalPages <= 1) return null;
+    if (pagination.totalPages <= 1) return null;
 
     const pages = [];
-    for (let i = 1; i <= totalPages; i++) {
+    for (let i = 1; i <= pagination.totalPages; i++) {
       pages.push(i);
     }
 
     return (
       <div className="flex items-center justify-between pt-4">
         <p className="text-sm text-gray-500 dark:text-gray-400">
-          {t('page')} {Math.min(filteredTeachers.length, (currentPage - 1) * ITEMS_PER_PAGE + 1)}&ndash;{Math.min(currentPage * ITEMS_PER_PAGE, filteredTeachers.length)} {t('of')} {filteredTeachers.length}
+          {t('page')} {Math.min(pagination.totalTeachers, (currentPage - 1) * ITEMS_PER_PAGE + 1)}&ndash;{Math.min(currentPage * ITEMS_PER_PAGE, pagination.totalTeachers)} {t('of')} {pagination.totalTeachers}
         </p>
         <div className="flex items-center gap-1">
           <button
@@ -189,8 +187,8 @@ const AllTeachers = ({ onSuccess }) => {
             </button>
           ))}
           <button
-            onClick={() => setCurrentPage(Math.min(totalPages, currentPage + 1))}
-            disabled={currentPage === totalPages}
+            onClick={() => setCurrentPage(Math.min(pagination.totalPages, currentPage + 1))}
+            disabled={currentPage === pagination.totalPages}
             className="px-3 py-1.5 rounded-lg text-sm font-medium border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-40 disabled:cursor-not-allowed transition-all cursor-pointer"
           >
             {t('next')}
@@ -206,9 +204,9 @@ const AllTeachers = ({ onSuccess }) => {
         <h1 className="text-2xl font-bold text-gray-900 dark:text-white">{t('manageTeachers')}</h1>
         <div className="w-full sm:w-64">
           <SearchInput
-            placeholder={t('enterTeacherId')}
-            value={teacherIdSearch}
-            onChange={(v) => { setTeacherIdSearch(v); setCurrentPage(1); }}
+            placeholder={t('searchByTeacherIdOrName')}
+            value={search}
+            onChange={(v) => { setSearch(v); setCurrentPage(1); }}
           />
         </div>
       </div>
@@ -229,16 +227,6 @@ const AllTeachers = ({ onSuccess }) => {
             onChange={(v) => { setStatusFilter(v); setCurrentPage(1); }}
           />
         </div>
-        <div className="w-full sm:w-56">
-          <label className="text-xs font-medium text-gray-500 dark:text-gray-400 block mb-1">
-            {t('searchByName')}
-          </label>
-          <SearchInput
-            placeholder={t('searchTeacherName')}
-            value={nameSearch}
-            onChange={(v) => { setNameSearch(v); setCurrentPage(1); }}
-          />
-        </div>
         <button
           onClick={handleReset}
           className="flex items-center gap-1.5 px-3 py-2.5 rounded-lg border border-gray-300 dark:border-gray-600 text-sm font-medium text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-all cursor-pointer sm:self-end"
@@ -257,41 +245,29 @@ const AllTeachers = ({ onSuccess }) => {
         </div>
       ) : (
         <>
-          {view === 'table' ? (
+          {teachers.length === 0 ? (
+            <div className="text-center py-16 text-gray-400 dark:text-gray-500 bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm">
+              <p className="text-sm">{t('noTeachersFound')}</p>
+            </div>
+          ) : view === 'table' ? (
             <>
-              {filteredTeachers.length === 0 ? (
-                <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm">
-                  <Table columns={tableColumns} data={paginatedTeachers} renderRow={renderTableRow} />
-                </div>
-              ) : (
-                <>
-                  <Table columns={tableColumns} data={paginatedTeachers} renderRow={renderTableRow} />
-                  {renderPagination()}
-                </>
-              )}
+              <Table columns={tableColumns} data={teachers} renderRow={renderTableRow} />
+              {renderPagination()}
             </>
           ) : (
             <>
-              {paginatedTeachers.length === 0 ? (
-                <div className="text-center py-16 text-gray-400 dark:text-gray-500 bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm">
-                  <p className="text-sm">{t('noTeachersFound')}</p>
-                </div>
-              ) : (
-                <>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                    {paginatedTeachers.map((teacher) => (
-                      <TeacherCard
-                        key={teacher.teacherId}
-                        teacher={teacher}
-                        onView={() => setSelectedTeacher(teacher)}
-                        onEdit={() => setEditingTeacher(teacher)}
-                        onDelete={() => setDeletingTeacher(teacher)}
-                      />
-                    ))}
-                  </div>
-                  {renderPagination()}
-                </>
-              )}
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                {teachers.map((teacher) => (
+                  <TeacherCard
+                    key={teacher.teacherId}
+                    teacher={teacher}
+                    onView={() => setSelectedTeacher(teacher)}
+                    onEdit={() => setEditingTeacher(teacher)}
+                    onDelete={() => setDeletingTeacher(teacher)}
+                  />
+                ))}
+              </div>
+              {renderPagination()}
             </>
           )}
         </>

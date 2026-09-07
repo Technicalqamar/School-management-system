@@ -3,6 +3,8 @@ import Timetable from '../models/timetable.model.js';
 import { ApiError } from '../utils/apiError.js';
 import cloudinary, { configureCloudinary, CLOUDINARY_FOLDERS } from '../config/cloudinary.js';
 
+const escapeRegex = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
 const uploadToCloudinary = (buffer, originalname) => {
   configureCloudinary();
   return new Promise((resolve, reject) => {
@@ -85,11 +87,12 @@ const getAllTeachers = async (query) => {
 
   if (search && search.trim()) {
     const term = search.trim();
+    const pattern = new RegExp(escapeRegex(term), 'i');
     filter.$or = [
-      { fullName: { $regex: term, $options: 'i' } },
-      { fatherName: { $regex: term, $options: 'i' } },
-      { teacherId: { $regex: term, $options: 'i' } },
-      { cnic: { $regex: term, $options: 'i' } },
+      { fullName: pattern },
+      { fatherName: pattern },
+      { teacherId: pattern },
+      { cnic: pattern },
     ];
   }
 
