@@ -52,6 +52,8 @@ const getCurrentAcademicYear = async () => {
 const getOutstandingDues = async ({ academicYear: requestedYear } = {}) => {
   const academicYear = requestedYear || (await getCurrentAcademicYear());
 
+  const currentMonthIndex = new Date().getMonth();
+
   const [structures, students, payments] = await Promise.all([
     FeeStructure.find({ academicYear, isDeleted: { $ne: true }, status: 'Active' }),
     Student.find({ status: 'Active' }),
@@ -120,6 +122,24 @@ const getOutstandingDues = async ({ academicYear: requestedYear } = {}) => {
 
     const dues = [];
 
+    const admissionDate = student.admissionDate || student.createdAt;
+    const academicYearNum = Number(academicYear);
+    let duesStartMonthIndex = 0;
+
+    if (admissionDate) {
+      const parsedAdmission = new Date(admissionDate);
+
+      if (!Number.isNaN(parsedAdmission.getTime())) {
+        const admissionYear = parsedAdmission.getFullYear();
+
+        if (admissionYear === academicYearNum) {
+          duesStartMonthIndex = parsedAdmission.getMonth();
+        } else if (admissionYear > academicYearNum) {
+          duesStartMonthIndex = MONTHS.length;
+        }
+      }
+    }
+
     const pushDue = ({ id, feeType, month, exam, amount, discount, fine, paid }) => {
       const remaining = Math.max(0, amount - paid + fine - discount);
 
@@ -156,9 +176,11 @@ const getOutstandingDues = async ({ academicYear: requestedYear } = {}) => {
 
     const monthlyApplicable = Number(structure.monthlyFee) || 0;
 
-    for (const month of MONTHS) {
+    for (let i = 0; i < MONTHS.length; i++) {
       if (monthlyApplicable <= 0) break;
+      if (i < duesStartMonthIndex || i > currentMonthIndex) continue;
 
+      const month = MONTHS[i];
       const data = monthData.get(month);
 
       pushDue({
@@ -177,6 +199,10 @@ const getOutstandingDues = async ({ academicYear: requestedYear } = {}) => {
 
     for (const exam of EXAMS) {
       if (examApplicable <= 0) continue;
+
+      const examMonthIndex = MONTHS.indexOf(EXAM_MONTHS[exam]);
+
+      if (examMonthIndex < duesStartMonthIndex || examMonthIndex > currentMonthIndex) continue;
 
       const data = examData.get(exam);
 

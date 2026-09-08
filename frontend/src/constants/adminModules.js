@@ -7,6 +7,5 @@ export const ADMIN_MODULES = {
   'Timetable Management': '/admin/timetable',
   'Attendance Management': '/admin/attendance',
   'Events & Holidays': '/admin/events',
-  'Fee Dashboard': '/admin/fees/dashboard',
   'School Settings': '/admin/settings',
 };

@@ -85,7 +85,7 @@ const resolveFeeType = (feeType) => {
 
 const feeTypeToLabel = (canonical) => (canonical === 'All' ? 'All Fees' : FEE_TYPE_LABELS[canonical]);
 
-const enumerateLines = ({ studentPayments, structure, canonicalFeeType, fromStr, toStr }) => {
+const enumerateLines = ({ studentPayments, structure, canonicalFeeType, fromStr, toStr, monthStartIndex = 0, monthEndIndex = MONTHS.length - 1 }) => {
   const groups = new Map();
 
   for (const payment of studentPayments) {
@@ -185,13 +185,18 @@ const enumerateLines = ({ studentPayments, structure, canonicalFeeType, fromStr,
   }
 
   if (canonicalFeeType === 'All' || canonicalFeeType === 'Monthly') {
-    for (const month of MONTHS) {
-      buildLine('Monthly', month, null);
+    for (let i = monthStartIndex; i <= monthEndIndex; i++) {
+      if (i < 0 || i >= MONTHS.length) continue;
+      buildLine('Monthly', MONTHS[i], null);
     }
   }
 
   if (canonicalFeeType === 'All' || canonicalFeeType === 'Examination') {
     for (const exam of EXAMS) {
+      const examMonthIndex = MONTHS.indexOf(EXAM_MONTHS[exam]);
+
+      if (examMonthIndex < monthStartIndex || examMonthIndex > monthEndIndex) continue;
+
       buildLine('Examination', EXAM_MONTHS[exam], exam);
     }
   }
@@ -353,7 +358,7 @@ const buildOverallReport = ({ students, structureByFeeClass, paymentsByStudent, 
   };
 };
 
-const buildStudentReport = async ({ studentId, students, structureByFeeClass, paymentsByStudent, canonicalFeeType, fromStr, toStr, academicYear }) => {
+const buildStudentReport = async ({ studentId, students, structureByFeeClass, paymentsByStudent, canonicalFeeType, fromStr, toStr, academicYear, respectAdmission = false }) => {
   const student = students.find((item) => String(item._id) === String(studentId));
 
   if (!student) {
@@ -362,7 +367,32 @@ const buildStudentReport = async ({ studentId, students, structureByFeeClass, pa
 
   const structure = structureByFeeClass.get(CLASS_TO_FEE_CLASS[student.class] || student.class);
   const studentPayments = paymentsByStudent.get(String(student._id)) || [];
-  const lines = enumerateLines({ studentPayments, structure, canonicalFeeType, fromStr, toStr });
+
+  let monthStartIndex = 0;
+  let monthEndIndex = MONTHS.length - 1;
+
+  if (respectAdmission) {
+    const academicYearNum = Number.isNaN(Number(academicYear)) ? new Date().getFullYear() : Number(academicYear);
+    const admissionDate = student.admissionDate || student.createdAt;
+
+    if (admissionDate) {
+      const parsedAdmission = new Date(admissionDate);
+
+      if (!Number.isNaN(parsedAdmission.getTime())) {
+        const admissionYear = parsedAdmission.getFullYear();
+
+        if (admissionYear === academicYearNum) {
+          monthStartIndex = parsedAdmission.getMonth();
+        } else if (admissionYear > academicYearNum) {
+          monthStartIndex = MONTHS.length;
+        }
+      }
+    }
+
+    monthEndIndex = Math.min(new Date().getMonth(), MONTHS.length - 1);
+  }
+
+  const lines = enumerateLines({ studentPayments, structure, canonicalFeeType, fromStr, toStr, monthStartIndex, monthEndIndex });
   const totals = rollupLines(lines);
 
   return {
@@ -390,7 +420,7 @@ const buildStudentReport = async ({ studentId, students, structureByFeeClass, pa
   };
 };
 
-const getReport = async ({ scope, academicYear, className, studentId, feeType, dateFrom, dateTo }) => {
+const getReport = async ({ scope, academicYear, className, studentId, feeType, dateFrom, dateTo, respectAdmission = false }) => {
   const effectiveYear = academicYear || (await getCurrentAcademicYear());
   const canonicalFeeType = resolveFeeType(feeType);
   const fromStr = dateFrom || '';
@@ -426,6 +456,7 @@ const getReport = async ({ scope, academicYear, className, studentId, feeType, d
       fromStr,
       toStr,
       academicYear: effectiveYear,
+      respectAdmission,
     });
 
     return { report };

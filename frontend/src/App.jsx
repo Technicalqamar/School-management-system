@@ -28,14 +28,12 @@ import SubjectManagement from './pages/admin/SubjectManagement';
 import TimetableManagement from './pages/admin/TimetableManagement';
 import AttendanceManagement from './pages/admin/AttendanceManagement';
 import EventsHolidays from './pages/admin/EventsHolidays';
-import FeeDashboardPage from './pages/admin/dashboards/FeeDashboard';
 import FeeStructurePage from './pages/admin/FeeManagement/FeeStructure';
 import CollectFeePage from './pages/admin/FeeManagement/CollectFee';
 import StudentFeeDetailsPage from './pages/admin/FeeManagement/StudentFeeDetails';
 import FeeReportsPage from './pages/admin/FeeManagement/Reports';
 import OutstandingDuesPage from './pages/admin/FeeManagement/OutstandingDues';
 import SchoolSettings from './pages/admin/SchoolSettings';
-import ExaminationDashboardPage from './pages/admin/dashboards/ExaminationDashboard';
 import ExamSetupPage from './pages/admin/ExamManagement/ExamSetup';
 import SubjectMarksPage from './pages/admin/ExamManagement/SubjectMarks';
 import ExamSchedulePage from './pages/admin/ExamManagement/ExamSchedule';
@@ -104,14 +102,12 @@ function AppContent() {
             <Route path="timetable" element={<TimetableManagement />} />
             <Route path="attendance" element={<AttendanceManagement />} />
             <Route path="events" element={<EventsHolidays />} />
-            <Route path="fees/dashboard" element={<FeeDashboardPage />} />
             <Route path="fees/fee-structure" element={<FeeStructurePage />} />
             <Route path="fees/collect-fee" element={<CollectFeePage />} />
             <Route path="fees/student-fee-details" element={<StudentFeeDetailsPage />} />
             <Route path="fees/reports" element={<FeeReportsPage />} />
             <Route path="fees/outstanding-dues" element={<OutstandingDuesPage />} />
             <Route path="settings" element={<SchoolSettings />} />
-            <Route path="exams/dashboard" element={<ExaminationDashboardPage />} />
             <Route path="exams/setup" element={<ExamSetupPage />} />
             <Route path="exams/subjects-marks" element={<SubjectMarksPage />} />
             <Route path="exams/schedule" element={<ExamSchedulePage />} />

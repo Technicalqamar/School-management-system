@@ -10,6 +10,7 @@ const getReport = asyncHandler(async (req, res) => {
     feeType: req.query.feeType,
     dateFrom: req.query.dateFrom,
     dateTo: req.query.dateTo,
+    respectAdmission: req.query.respectAdmission === 'true',
   });
 
   return res.status(200).json({

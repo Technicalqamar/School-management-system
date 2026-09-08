@@ -28,7 +28,6 @@ import feeStructureRoutes from './routes/feeStructure.routes.js';
 import feeCollectionRoutes from './routes/feeCollection.routes.js';
 import feeOutstandingRoutes from './routes/feeOutstanding.routes.js';
 import feeReportRoutes from './routes/feeReport.routes.js';
-import feeDashboardRoutes from './routes/feeDashboard.routes.js';
 import portalRoutes from './routes/portal.routes.js';
 import { errorHandler } from './middlewares/error.middleware.js';
 
@@ -84,7 +83,6 @@ app.use('/api/v1/fees/structures', feeStructureRoutes);
 app.use('/api/v1/fees/collections', feeCollectionRoutes);
 app.use('/api/v1/fees/outstanding-dues', feeOutstandingRoutes);
 app.use('/api/v1/fees/reports', feeReportRoutes);
-app.use('/api/v1/fees/dashboard', feeDashboardRoutes);
 app.use('/api/v1/portal', portalRoutes);
 
 // Health check

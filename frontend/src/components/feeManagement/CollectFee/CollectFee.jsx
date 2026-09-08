@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useMemo } from 'react';
 import { MagnifyingGlassIcon, CheckCircleIcon, CurrencyRupeeIcon } from '@heroicons/react/24/outline';
 import toast from 'react-hot-toast';
 import Table from '../../common/Table/Table';
@@ -57,6 +57,7 @@ const CollectFee = ({ onDataChange }) => {
   const [searchResults, setSearchResults] = useState([]);
   const [hasSearched, setHasSearched] = useState(false);
   const [searching, setSearching] = useState(false);
+  const [inputFocused, setInputFocused] = useState(false);
 
   const [structures, setStructures] = useState([]);
   const [structuresLoaded, setStructuresLoaded] = useState(false);
@@ -105,6 +106,15 @@ const CollectFee = ({ onDataChange }) => {
     );
   };
 
+  const mapStudentResult = (s) => ({
+    _id: s._id,
+    id: s.studentId,
+    name: s.fullName,
+    fatherName: s.fatherName,
+    class: s.class,
+    admissionDate: s.admissionDate,
+  });
+
   const handleSearch = useCallback(async () => {
     const q = searchQuery.trim().toLowerCase();
     if (!q) {
@@ -115,15 +125,7 @@ const CollectFee = ({ onDataChange }) => {
     setSearching(true);
     try {
       const result = await studentService.getAllStudents({ search: q, status: 'Active', limit: 50 });
-      const students = (result.data?.students || [])
-        .map((s) => ({
-          _id: s._id,
-          id: s.studentId,
-          name: s.fullName,
-          fatherName: s.fatherName,
-          class: s.class,
-        }));
-      setSearchResults(students);
+      setSearchResults((result.data?.students || []).map(mapStudentResult));
     } catch (err) {
       const msg = err.response?.data?.message || 'Failed to search students';
       toast.error(msg);
@@ -134,9 +136,59 @@ const CollectFee = ({ onDataChange }) => {
     }
   }, [searchQuery]);
 
+  useEffect(() => {
+    let cancelled = false;
+    const timer = setTimeout(async () => {
+      const q = searchQuery.trim().toLowerCase();
+      if (!q) {
+        setSearchResults([]);
+        setHasSearched(false);
+        return;
+      }
+      try {
+        const result = await studentService.getAllStudents({ search: q, status: 'Active', limit: 50 });
+        if (!cancelled) setSearchResults((result.data?.students || []).map(mapStudentResult));
+      } catch {
+        if (!cancelled) setSearchResults([]);
+      }
+    }, 300);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [searchQuery]);
+
   const handleSearchKeyDown = (e) => {
-    if (e.key === 'Enter') handleSearch();
+    if (e.key === 'Enter') {
+      setInputFocused(false);
+      handleSearch();
+    } else if (e.key === 'Escape') {
+      setInputFocused(false);
+    }
   };
+
+  const selectSearchResult = (student) => {
+    setSearchResults([student]);
+    setHasSearched(true);
+    setInputFocused(false);
+  };
+
+  const getAdmissionStartIndex = useCallback((student) => {
+    if (!student?.admissionDate) return 0;
+    const adm = new Date(student.admissionDate);
+    if (Number.isNaN(adm.getTime())) return 0;
+    const admYear = adm.getFullYear();
+    if (admYear > Number(currentYear)) return MONTHS.length;
+    if (admYear === Number(currentYear)) return adm.getMonth();
+    return 0;
+  }, [currentYear]);
+
+  const currentMonthIndex = new Date().getMonth();
+  const monthlyMonthOptions = useMemo(() => {
+    if (feeType !== 'Monthly Fee' || !selectedStudent) return MONTHS;
+    const startIndex = getAdmissionStartIndex(selectedStudent);
+    return MONTHS.filter((_, i) => i >= startIndex && i <= currentMonthIndex);
+  }, [feeType, selectedStudent, currentMonthIndex, getAdmissionStartIndex]);
 
   const feeAmount = selectedStudent && feeType
     ? (getFeeStructureForClass(selectedStudent.class)?.[FEE_TYPE_FIELD[feeType]] ?? 0)
@@ -187,6 +239,9 @@ const CollectFee = ({ onDataChange }) => {
     const newErrors = {};
     if (!feeType) newErrors.feeType = 'Please select a payment type';
     if (!month) newErrors.month = 'Please select a month';
+    else if (feeType === 'Monthly Fee' && !monthlyMonthOptions.includes(month)) {
+      newErrors.month = 'Monthly fee can only be collected from admission month to the current month';
+    }
     if (feeType === 'Examination Fee' && !exam) newErrors.exam = 'Please select an exam';
     if (!amountPaid || Number(amountPaid) <= 0) newErrors.amountPaid = 'Enter a valid amount';
     if (Number(amountPaid) > totalPayable) newErrors.amountPaid = 'Amount cannot exceed total payable';
@@ -297,11 +352,27 @@ const CollectFee = ({ onDataChange }) => {
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               onKeyDown={handleSearchKeyDown}
+              onFocus={() => setInputFocused(true)}
+              onBlur={() => { setTimeout(() => setInputFocused(false), 150); }}
               className="w-full pl-10 pr-4 py-2.5 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm text-gray-700 dark:text-gray-200 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
             />
+            {searchQuery && searchResults.length > 0 && (inputFocused || hasSearched) && (
+              <div className="absolute z-50 mt-1 w-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-xl max-h-60 overflow-y-auto">
+                {searchResults.map((s) => (
+                  <div
+                    key={s._id}
+                    onMouseDown={() => selectSearchResult(s)}
+                    className="px-3 py-2 hover:bg-blue-50 dark:hover:bg-gray-700 cursor-pointer border-b border-gray-100 dark:border-gray-700 last:border-0"
+                  >
+                    <p className="text-sm font-medium text-gray-900 dark:text-white">{s.name}</p>
+                    <p className="text-xs text-gray-500 dark:text-gray-400">{s.id}</p>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
           <button
-            onClick={handleSearch}
+            onClick={() => { setInputFocused(false); handleSearch(); }}
             disabled={searching}
             className="px-5 py-2.5 rounded-lg text-sm font-medium text-white bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 transition-all cursor-pointer shadow-sm whitespace-nowrap disabled:opacity-50 disabled:cursor-not-allowed"
           >
@@ -369,7 +440,7 @@ const CollectFee = ({ onDataChange }) => {
                       name="month"
                       value={month}
                       onChange={(e) => { setMonth(e.target.value); if (errors.month) setErrors((p) => ({ ...p, month: '' })); }}
-                      options={MONTHS}
+                      options={monthlyMonthOptions}
                       placeholder="Select month"
                       required
                     />

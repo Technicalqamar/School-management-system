@@ -30,6 +30,11 @@ const FEE_TYPE_FIELD = {
   Examination: 'examFee',
 };
 
+const MONTHS = [
+  'January', 'February', 'March', 'April', 'May', 'June',
+  'July', 'August', 'September', 'October', 'November', 'December',
+];
+
 const getCurrentAcademicYear = async () => {
   const settings = await SchoolSettings.getSettings();
 
@@ -50,6 +55,29 @@ const collectFee = async (data) => {
   }
 
   const academicYear = await getCurrentAcademicYear();
+
+  if (feeType === 'Monthly') {
+    const academicYearNum = /^\d{4}$/.test(academicYear) ? Number(academicYear) : new Date().getFullYear();
+    const admissionDate = student.admissionDate ? new Date(student.admissionDate) : new Date(student.createdAt);
+    const admissionYear = Number.isNaN(admissionDate.getTime()) ? null : admissionDate.getFullYear();
+    const monthIndex = MONTHS.indexOf(month);
+
+    let startMonthIndex = 0;
+    if (admissionYear !== null && admissionYear > academicYearNum) {
+      startMonthIndex = MONTHS.length;
+    } else if (admissionYear !== null && admissionYear === academicYearNum) {
+      startMonthIndex = admissionDate.getMonth();
+    }
+
+    if (monthIndex < 0 || monthIndex < startMonthIndex) {
+      throw new ApiError(400, 'Monthly fee cannot be collected for a month before the student admission month');
+    }
+
+    if (monthIndex > new Date().getMonth()) {
+      throw new ApiError(400, 'Monthly fee cannot be collected for a future month');
+    }
+  }
+
   const feeClassName = CLASS_TO_FEE_CLASS[student.class] || student.class;
 
   const structure = await FeeStructure.findOne({

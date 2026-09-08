@@ -45,11 +45,6 @@ const feeService = {
     const response = await api.get('/fees/reports/students', { params: { query } });
     return response.data;
   },
-
-  getFeeDashboard: async (params = {}) => {
-    const response = await api.get('/fees/dashboard', { params });
-    return response.data;
-  },
 };
 
 export default feeService;

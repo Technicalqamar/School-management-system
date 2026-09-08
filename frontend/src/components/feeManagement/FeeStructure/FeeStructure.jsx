@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { PlusIcon } from '@heroicons/react/24/outline';
+import { PlusIcon, ChevronDownIcon } from '@heroicons/react/24/outline';
 import toast from 'react-hot-toast';
 import SearchInput from '../../common/SearchInput/SearchInput';
 import Table from '../../common/Table/Table';
@@ -52,8 +52,6 @@ const FeeStructure = ({ onDataChange }) => {
   const filtered = data.filter((item) =>
     item.className.toLowerCase().includes(search.toLowerCase())
   );
-
-  const availableClassOptions = CLASS_OPTIONS;
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -169,7 +167,7 @@ const FeeStructure = ({ onDataChange }) => {
   const renderRow = (item) => (
     <>
       <td className="px-4 py-3">
-        <span className="font-medium text-gray-900 dark:text-white">{item.className}</span>
+        <span className="font-medium text-gray-900 dark:text-white">{`Class ${item.className}`}</span>
       </td>
       <td className="px-4 py-3 text-gray-700 dark:text-gray-300">{formatCurrency(item.monthlyFee)}</td>
       <td className="px-4 py-3 text-gray-700 dark:text-gray-300">{formatCurrency(item.admissionFee)}</td>
@@ -231,16 +229,32 @@ const FeeStructure = ({ onDataChange }) => {
           {editItem ? 'Update the fee amounts for this class.' : 'Define the fee structure for a class.'}
         </p>
 
-        <SelectInput
-          label="Select Class"
-          name="className"
-          value={form.className}
-          onChange={handleChange}
-          options={availableClassOptions}
-          placeholder="Choose a class"
-          required
-          disabled={!!editItem}
-        />
+        <div className="mb-4">
+          <label htmlFor="className" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
+            Select Class <span className="text-red-500">*</span>
+          </label>
+          <div className="relative">
+            <select
+              id="className"
+              name="className"
+              value={form.className}
+              onChange={handleChange}
+              required
+              disabled={!!editItem}
+              className={`appearance-none w-full px-4 py-2.5 pr-10 rounded-lg border text-sm transition-all ${
+                editItem
+                  ? 'border-gray-200 dark:border-gray-700 bg-gray-100 dark:bg-gray-900 text-gray-400 dark:text-gray-500 cursor-not-allowed'
+                  : 'border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 cursor-pointer'
+              }`}
+            >
+              <option value="" disabled>Choose a class</option>
+              {CLASS_OPTIONS.map((cls) => (
+                <option key={cls} value={cls}>{`Class ${cls}`}</option>
+              ))}
+            </select>
+            <ChevronDownIcon className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 pointer-events-none text-gray-400" />
+          </div>
+        </div>
         {errors.className && <p className="text-xs text-red-600 dark:text-red-400 -mt-2 mb-3">{errors.className}</p>}
 
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">

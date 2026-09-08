@@ -6,8 +6,6 @@ import {
   AcademicCapIcon,
   CalendarDaysIcon,
   BanknotesIcon,
-  DocumentTextIcon,
-  InformationCircleIcon,
   UserIcon,
 } from '@heroicons/react/24/outline';
 import toast from 'react-hot-toast';
@@ -20,16 +18,12 @@ import OverviewTab from './tabs/OverviewTab';
 import AcademicTab from './tabs/AcademicTab';
 import AttendanceTab from './tabs/AttendanceTab';
 import FeesTab from './tabs/FeesTab';
-import DocumentsTab from './tabs/DocumentsTab';
-import OtherInformationTab from './tabs/OtherInformationTab';
 
 const TABS = [
   { key: 'overview', label: 'Overview', icon: UserCircleIcon },
   { key: 'academic', label: 'Academic', icon: AcademicCapIcon },
   { key: 'attendance', label: 'Attendance', icon: CalendarDaysIcon },
   { key: 'fees', label: 'Fees', icon: BanknotesIcon },
-  { key: 'documents', label: 'Documents', icon: DocumentTextIcon },
-  { key: 'other', label: 'Other Information', icon: InformationCircleIcon },
 ];
 
 const StudentProfile = () => {
@@ -92,6 +86,7 @@ const StudentProfile = () => {
         feeType: 'All Fees',
         studentId: student._id,
         academicYear: student.academicYear,
+        respectAdmission: true,
       });
       const paymentsPromise = feeService.getStudentPayments({
         studentId: student._id,
@@ -195,8 +190,6 @@ const StudentProfile = () => {
         {activeTab === 'fees' && (
           <FeesTab feeReport={feeReport} payments={payments} feeLoading={feesLoading} feeError={feeError} />
         )}
-        {activeTab === 'documents' && <DocumentsTab />}
-        {activeTab === 'other' && <OtherInformationTab student={student} />}
       </div>
     </div>
   );

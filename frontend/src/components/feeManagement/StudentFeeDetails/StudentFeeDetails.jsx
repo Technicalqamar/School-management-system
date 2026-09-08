@@ -57,6 +57,27 @@ const buildStudentCard = (student) => ({
   admissionDate: formatDate(student.admissionDate),
 });
 
+const mapPaymentRow = (p) => ({
+  _id: p._id,
+  id: p.receiptId,
+  feeType: toDisplayFeeType(p.feeType),
+  month: p.month,
+  exam: p.exam || null,
+  amount: p.baseAmount,
+  discount: p.discount,
+  fine: p.lateFine,
+  totalPaid: p.amountPaid,
+  remaining: p.remainingAmount,
+  status: p.remainingAmount > 0 ? 'Partial' : 'Paid',
+  date: formatDate(p.paymentDate),
+  paymentMethod: p.paymentMethod,
+  academicYear: p.academicYear,
+  studentId: p.studentId,
+  studentName: p.studentName,
+  fatherName: p.fatherName,
+  className: p.className,
+});
+
 const StudentFeeDetails = () => {
   const { schoolInfo, branding, academic } = useSchoolConfig();
   const [searchQuery, setSearchQuery] = useState('');
@@ -66,17 +87,26 @@ const StudentFeeDetails = () => {
   const [searching, setSearching] = useState(false);
 
   const [studentPayments, setStudentPayments] = useState([]);
+  const [paymentHistory, setPaymentHistory] = useState([]);
   const [paymentsLoading, setPaymentsLoading] = useState(false);
 
   const [structures, setStructures] = useState([]);
 
   const [feeTypeFilter, setFeeTypeFilter] = useState('All Fee Types');
   const [monthFilter, setMonthFilter] = useState('All Months');
+  const [yearFilter, setYearFilter] = useState('All Years');
+  const [inputFocused, setInputFocused] = useState(false);
 
   const [showReceiptModal, setShowReceiptModal] = useState(false);
   const [receiptItem, setReceiptItem] = useState(null);
 
   const currentYear = /^\d{4}$/.test(academic?.currentYear || '') ? academic.currentYear : String(new Date().getFullYear());
+
+  const yearOptions = useMemo(() => {
+    const years = new Set(studentPayments.map((p) => p.academicYear).filter(Boolean));
+    if (currentYear) years.add(currentYear);
+    return ['All Years', ...[...years].sort((a, b) => String(b).localeCompare(String(a)))];
+  }, [studentPayments, currentYear]);
 
   const fetchStructures = useCallback(async () => {
     try {
@@ -110,12 +140,14 @@ const StudentFeeDetails = () => {
       setSearchResults([]);
       setHasSearched(false);
       setStudentPayments([]);
+      setPaymentHistory([]);
       setPaymentsLoading(false);
       return;
     }
 
     setSearching(true);
     setStudentPayments([]);
+    setPaymentHistory([]);
     setPaymentsLoading(true);
     try {
       const result = await studentService.getAllStudents({ search: q, status: 'Active', limit: 50 });
@@ -143,14 +175,40 @@ const StudentFeeDetails = () => {
     }
   }, [searchQuery]);
 
+  useEffect(() => {
+    let cancelled = false;
+    const timer = setTimeout(() => {
+      const q = searchQuery.trim().toLowerCase();
+      if (!q) {
+        if (!cancelled) setSearchResults([]);
+        return;
+      }
+      studentService.getAllStudents({ search: q, status: 'Active', limit: 50 })
+        .then((result) => {
+          if (!cancelled) setSearchResults(result.data?.students || []);
+        })
+        .catch(() => {
+          if (!cancelled) setSearchResults([]);
+        });
+    }, 300);
+    return () => { cancelled = true; clearTimeout(timer); };
+  }, [searchQuery]);
+
   const selectSearchResult = (student) => {
     setSearchResults([]);
+    setStudentPayments([]);
+    setPaymentHistory([]);
+    setPaymentsLoading(true);
     setFoundStudent(buildStudentCard(student));
+    setHasSearched(true);
+    setInputFocused(false);
   };
 
   const handleSearchKeyDown = (e) => {
     if (e.key === 'Enter') handleSearch();
   };
+
+  const showSuggestions = !!searchQuery.trim() && searchResults.length > 0 && (inputFocused || hasSearched);
 
   useEffect(() => {
     if (!foundStudent) return undefined;
@@ -160,27 +218,7 @@ const StudentFeeDetails = () => {
     feeService.getStudentPayments({ studentId: foundStudent._id })
       .then((res) => {
         if (cancelled) return;
-        const payments = (res.data?.payments || []).map((p) => ({
-          _id: p._id,
-          id: p.receiptId,
-          feeType: toDisplayFeeType(p.feeType),
-          month: p.month,
-          exam: p.exam || null,
-          amount: p.baseAmount,
-          discount: p.discount,
-          fine: p.lateFine,
-          totalPaid: p.amountPaid,
-          remaining: p.remainingAmount,
-          status: p.remainingAmount > 0 ? 'Partial' : 'Paid',
-          date: formatDate(p.paymentDate),
-          paymentMethod: p.paymentMethod,
-          academicYear: p.academicYear,
-          studentId: p.studentId,
-          studentName: p.studentName,
-          fatherName: p.fatherName,
-          className: p.className,
-        }));
-        setStudentPayments(payments);
+        setStudentPayments((res.data?.payments || []).map(mapPaymentRow));
       })
       .catch((err) => {
         if (cancelled) return;
@@ -194,6 +232,31 @@ const StudentFeeDetails = () => {
 
     return () => { cancelled = true; };
   }, [foundStudent]);
+
+  useEffect(() => {
+    if (!foundStudent) return undefined;
+
+    let cancelled = false;
+
+    const params = { studentId: foundStudent._id };
+    if (yearFilter !== 'All Years') params.academicYear = yearFilter;
+    if (feeTypeFilter !== 'All Fee Types') params.feeType = feeTypeFilter;
+    if (monthFilter !== 'All Months') params.month = monthFilter;
+
+    feeService.getStudentPayments(params)
+      .then((res) => {
+        if (cancelled) return;
+        setPaymentHistory((res.data?.payments || []).map(mapPaymentRow));
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        const msg = err.response?.data?.message || 'Failed to load payment history';
+        toast.error(msg);
+        setPaymentHistory([]);
+      });
+
+    return () => { cancelled = true; };
+  }, [foundStudent, yearFilter, feeTypeFilter, monthFilter]);
 
   const feeLines = useMemo(() => {
     const lines = new Map();
@@ -227,25 +290,6 @@ const StudentFeeDetails = () => {
 
     return Array.from(lines.values());
   }, [studentPayments]);
-
-  const lineByKey = useMemo(
-    () => new Map(feeLines.map((line) => [line.key, line])),
-    [feeLines]
-  );
-
-  const enrichedStudentPayments = useMemo(
-    () => studentPayments.map((payment) => {
-      const line = lineByKey.get(`${payment.feeType}::${payment.month || ''}::${payment.exam || ''}`);
-      return line ? { ...payment, remaining: line.remaining, status: line.status } : payment;
-    }),
-    [studentPayments, lineByKey]
-  );
-
-  const filteredPayments = enrichedStudentPayments.filter((r) => {
-    const matchesFeeType = feeTypeFilter === 'All Fee Types' || r.feeType === feeTypeFilter;
-    const matchesMonth = monthFilter === 'All Months' || r.month === monthFilter;
-    return matchesFeeType && matchesMonth;
-  });
 
   const structureForStudent = getFeeStructureForClass(foundStudent?.class);
   const monthlyTotal = (structureForStudent?.monthlyFee || 0) * 12;
@@ -401,8 +445,34 @@ const StudentFeeDetails = () => {
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               onKeyDown={handleSearchKeyDown}
+              onFocus={() => setInputFocused(true)}
+              onBlur={() => setTimeout(() => setInputFocused(false), 150)}
               className="w-full pl-10 pr-4 py-2.5 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm text-gray-700 dark:text-gray-200 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
             />
+            {showSuggestions && (
+              <div className="absolute left-0 right-0 top-full mt-1.5 z-20 bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 shadow-lg max-h-72 overflow-y-auto divide-y divide-gray-100 dark:divide-gray-700">
+                {searchResults.map((s) => (
+                  <button
+                    key={s._id}
+                    type="button"
+                    onClick={() => selectSearchResult(s)}
+                    className="w-full flex items-center gap-3 px-3 py-2.5 text-left hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors cursor-pointer"
+                  >
+                    <div className="w-9 h-9 rounded-full bg-gradient-to-br from-blue-600 to-blue-800 flex items-center justify-center text-white font-bold text-xs flex-shrink-0">
+                      {getInitials(s.fullName)}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-medium text-gray-900 dark:text-white">{s.fullName}</p>
+                      <p className="text-xs text-gray-500 dark:text-gray-400 truncate">Father: {s.fatherName}</p>
+                    </div>
+                    <div className="text-right shrink-0">
+                      <p className="text-xs font-mono text-gray-500 dark:text-gray-400">{s.studentId}</p>
+                      <p className="text-xs text-gray-500 dark:text-gray-400">{s.class}</p>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
           <button
             onClick={handleSearch}
@@ -413,34 +483,6 @@ const StudentFeeDetails = () => {
           </button>
         </div>
       </div>
-
-      {hasSearched && !foundStudent && searchResults.length > 0 && (
-        <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-4">
-          <h3 className="text-sm font-semibold text-gray-900 dark:text-white uppercase tracking-wider mb-2">Select a student</h3>
-          <div className="divide-y divide-gray-100 dark:divide-gray-700">
-            {searchResults.map((s) => (
-              <button
-                key={s._id}
-                type="button"
-                onClick={() => selectSearchResult(s)}
-                className="w-full flex items-center gap-3 py-3 text-left hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors cursor-pointer"
-              >
-                <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-600 to-blue-800 flex items-center justify-center text-white font-bold text-xs flex-shrink-0">
-                  {getInitials(s.fullName)}
-                </div>
-                <div className="min-w-0 flex-1">
-                  <p className="text-sm font-medium text-gray-900 dark:text-white">{s.fullName}</p>
-                  <p className="text-xs text-gray-500 dark:text-gray-400 truncate">Father: {s.fatherName}</p>
-                </div>
-                <div className="text-right shrink-0">
-                  <p className="text-xs font-mono text-gray-500 dark:text-gray-400">{s.studentId}</p>
-                  <p className="text-xs text-gray-500 dark:text-gray-400">{s.class}</p>
-                </div>
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
 
       {hasSearched && !foundStudent && searchResults.length === 0 && (
         <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-8 text-center">
@@ -499,7 +541,7 @@ const StudentFeeDetails = () => {
                 <div className="w-8 h-8 rounded-lg bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center">
                   <CurrencyDollarIcon className="h-4 w-4 text-blue-600 dark:text-blue-400" />
                 </div>
-                <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Monthly Fee</p>
+                <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Yearly Fee</p>
               </div>
               <div className="space-y-1.5 text-sm">
                 <div className="flex justify-between"><span className="text-gray-500 dark:text-gray-400">Total</span><span className="font-semibold text-gray-900 dark:text-white">{formatCurrency(monthlyTotal)}</span></div>
@@ -657,12 +699,21 @@ const StudentFeeDetails = () => {
                   <option key={m} value={m}>{m}</option>
                 ))}
               </select>
+              <select
+                value={yearFilter}
+                onChange={(e) => setYearFilter(e.target.value)}
+                className="px-3 py-2.5 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm text-gray-700 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 cursor-pointer"
+              >
+                {yearOptions.map((y) => (
+                  <option key={y} value={y}>{y}</option>
+                ))}
+              </select>
             </div>
 
             {paymentsLoading ? (
               <p className="text-sm text-gray-500 dark:text-gray-400 py-6 text-center">Loading payment history...</p>
             ) : (
-              <Table columns={paymentColumns} data={filteredPayments} renderRow={renderPaymentRow} />
+              <Table columns={paymentColumns} data={paymentHistory} renderRow={renderPaymentRow} />
             )}
           </div>
         </>
