@@ -22,6 +22,16 @@ counterSchema.statics.increment = async function (modelName) {
   return result.sequenceValue;
 };
 
+counterSchema.statics.incrementBy = async function (modelName, steps = 1) {
+  const increment = Math.max(1, Number(steps) || 1);
+  const result = await this.findOneAndUpdate(
+    { model: modelName },
+    { $inc: { sequenceValue: increment } },
+    { returnDocument: "after", upsert: true },
+  );
+  return result.sequenceValue;
+};
+
 counterSchema.statics.getCurrentValue = async function (modelName) {
   const counter = await this.findOne({ model: modelName });
   return counter ? counter.sequenceValue : 0;

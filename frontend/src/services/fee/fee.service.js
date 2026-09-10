@@ -45,6 +45,21 @@ const feeService = {
     const response = await api.get('/fees/reports/students', { params: { query } });
     return response.data;
   },
+
+  generateVouchers: async (data) => {
+    const response = await api.post('/fees/vouchers', data);
+    return response.data;
+  },
+
+  getVouchers: async (params = {}) => {
+    const response = await api.get('/fees/vouchers', { params });
+    return response.data;
+  },
+
+  getVoucher: async (voucherId) => {
+    const response = await api.get(`/fees/vouchers/${voucherId}`);
+    return response.data;
+  },
 };
 
 export default feeService;

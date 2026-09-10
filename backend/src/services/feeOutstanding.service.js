@@ -57,7 +57,7 @@ const getOutstandingDues = async ({ academicYear: requestedYear } = {}) => {
   const [structures, students, payments] = await Promise.all([
     FeeStructure.find({ academicYear, isDeleted: { $ne: true }, status: 'Active' }),
     Student.find({ status: 'Active' }),
-    FeeCollection.find({ academicYear }),
+    FeeCollection.find({ academicYear, voucherId: null }),
   ]);
 
   const structureByFeeClass = new Map();

@@ -33,6 +33,7 @@ import CollectFeePage from './pages/admin/FeeManagement/CollectFee';
 import StudentFeeDetailsPage from './pages/admin/FeeManagement/StudentFeeDetails';
 import FeeReportsPage from './pages/admin/FeeManagement/Reports';
 import OutstandingDuesPage from './pages/admin/FeeManagement/OutstandingDues';
+import FeeVoucherGenerationPage from './pages/admin/FeeManagement/FeeVoucherGeneration';
 import SchoolSettings from './pages/admin/SchoolSettings';
 import ExamSetupPage from './pages/admin/ExamManagement/ExamSetup';
 import SubjectMarksPage from './pages/admin/ExamManagement/SubjectMarks';
@@ -107,6 +108,7 @@ function AppContent() {
             <Route path="fees/student-fee-details" element={<StudentFeeDetailsPage />} />
             <Route path="fees/reports" element={<FeeReportsPage />} />
             <Route path="fees/outstanding-dues" element={<OutstandingDuesPage />} />
+            <Route path="fees/voucher-generation" element={<FeeVoucherGenerationPage />} />
             <Route path="settings" element={<SchoolSettings />} />
             <Route path="exams/setup" element={<ExamSetupPage />} />
             <Route path="exams/subjects-marks" element={<SubjectMarksPage />} />

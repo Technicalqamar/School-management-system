@@ -429,7 +429,7 @@ const getReport = async ({ scope, academicYear, className, studentId, feeType, d
   const [structures, students, payments] = await Promise.all([
     FeeStructure.find({ academicYear: effectiveYear, isDeleted: { $ne: true }, status: 'Active' }),
     Student.find({ status: 'Active' }),
-    FeeCollection.find({ academicYear: effectiveYear }),
+    FeeCollection.find({ academicYear: effectiveYear, voucherId: null }),
   ]);
 
   const structureByFeeClass = new Map(structures.map((structure) => [structure.className, structure]));

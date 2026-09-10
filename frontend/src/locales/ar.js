@@ -11,6 +11,7 @@ const ar = {
   timetable: 'الجدول الدراسي',
   reports: 'التقارير',
   outstandingDues: 'المبالغ المستحقة',
+  feeVoucherGeneration: 'إنشاء قسائم الرسوم',
   userAccounts: 'حسابات المستخدمين',
   allAccounts: 'جميع الحسابات',
   createAccount: 'إنشاء حساب',

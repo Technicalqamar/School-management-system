@@ -11,6 +11,7 @@ const fr = {
   timetable: 'Emploi du temps',
   reports: 'Rapports',
   outstandingDues: 'Dues en souffrance',
+  feeVoucherGeneration: 'Génération de bons de frais',
   userAccounts: 'Comptes utilisateurs',
   allAccounts: 'Tous les comptes',
   createAccount: 'Créer un compte',

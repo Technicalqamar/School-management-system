@@ -11,6 +11,7 @@ const ur = {
   timetable: 'ٹائم ٹیبل',
   reports: 'رپورٹس',
   outstandingDues: 'باقی واجبات',
+  feeVoucherGeneration: 'فی واؤچر جنریشن',
   userAccounts: 'صارف اکاؤنٹس',
   allAccounts: 'تمام اکاؤنٹس',
   createAccount: 'اکاؤنٹ بنائیں',

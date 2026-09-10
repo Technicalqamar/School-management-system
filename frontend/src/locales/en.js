@@ -14,6 +14,7 @@ const en = {
   feeStructure: 'Fee Structure',
   collectFee: 'Collect Fee',
   studentFeeDetails: 'Student Fee Details',
+  feeVoucherGeneration: 'Fee Voucher Generation',
   receipts: 'Receipts',
   totalCollected: 'Total Collected',
   monthlyCollection: 'Monthly Collection',

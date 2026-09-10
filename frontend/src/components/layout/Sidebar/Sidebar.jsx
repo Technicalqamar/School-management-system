@@ -398,9 +398,24 @@ const Sidebar = ({ isOpen, toggleSidebar }) => {
                       >
                         {t('reports')}
                       </NavLink>
+                      <NavLink
+                        to="/admin/fees/voucher-generation"
+                        className={({ isActive }) =>
+                          `block px-3 py-2 rounded-lg text-sm transition-all duration-200 ${
+                            isActive
+                              ? 'bg-blue-500 text-white shadow-md font-medium'
+                              : 'text-gray-500 dark:text-gray-400 hover:bg-blue-50 dark:hover:bg-gray-700 hover:text-blue-600 dark:hover:text-blue-400'
+                          }`
+                        }
+                        onClick={() => {
+                          if (window.innerWidth < 768) toggleSidebar();
+                        }}
+                      >
+                        {t('feeVoucherGeneration')}
+                      </NavLink>
                     </div>
-                  )}
-                </div>
+                    )}
+                  </div>
               ) : (
                 <NavLink
                   to="/admin/fees"

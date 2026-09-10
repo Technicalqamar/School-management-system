@@ -222,7 +222,7 @@ const getFeeCollections = async ({ studentId, feeType, month, academicYear } = {
     filter.feeType = canonicalFeeType;
   }
 
-  const payments = await FeeCollection.find(filter).sort({ paymentDate: -1, createdAt: -1 });
+  const payments = await FeeCollection.find({ ...filter, voucherId: null }).sort({ paymentDate: -1, createdAt: -1 });
 
   return { payments };
 };

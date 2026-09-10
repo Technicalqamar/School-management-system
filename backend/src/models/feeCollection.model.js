@@ -2,7 +2,7 @@ import mongoose from 'mongoose';
 
 const VALID_FEE_TYPES = ['Admission', 'Monthly', 'Examination'];
 
-const VALID_PAYMENT_METHODS = ['Cash', 'Bank Transfer', 'Online Payment'];
+const VALID_PAYMENT_METHODS = ['Cash', 'Bank Transfer', 'Online Payment', 'Voucher'];
 
 const feeCollectionSchema = new mongoose.Schema(
   {
@@ -104,6 +104,47 @@ const feeCollectionSchema = new mongoose.Schema(
       type: Date,
       default: Date.now,
     },
+    // Voucher metadata (reuses the existing fee records collection; payment records leave these null)
+    voucherId: {
+      type: String,
+      default: null,
+      trim: true,
+    },
+    classId: {
+      type: String,
+      default: null,
+      trim: true,
+    },
+    issueDate: {
+      type: Date,
+      default: null,
+    },
+    dueDate: {
+      type: Date,
+      default: null,
+    },
+    currentFee: {
+      type: Number,
+      default: null,
+      min: [0, 'Current fee cannot be negative'],
+    },
+    previousOutstanding: {
+      type: Number,
+      default: null,
+      min: [0, 'Previous outstanding cannot be negative'],
+    },
+    voucherStatus: {
+      type: String,
+      default: null,
+      enum: {
+        values: ['Generated', 'Cancelled'],
+        message: '{VALUE} is not a valid voucher status',
+      },
+    },
+    generatedAt: {
+      type: Date,
+      default: null,
+    },
   },
   {
     timestamps: true,
@@ -111,6 +152,8 @@ const feeCollectionSchema = new mongoose.Schema(
 );
 
 feeCollectionSchema.index({ student: 1, academicYear: 1, feeType: 1, month: 1 });
+feeCollectionSchema.index({ voucherId: 1 }, { unique: true, partialFilterExpression: { voucherId: { $type: 'string' } } });
+feeCollectionSchema.index({ academicYear: 1, voucherId: 1 }, { partialFilterExpression: { voucherId: { $type: 'string' } } });
 
 const FeeCollection = mongoose.model('FeeCollection', feeCollectionSchema);
 
