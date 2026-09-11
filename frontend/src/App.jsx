@@ -16,9 +16,18 @@ import AdminResetPasswordPage from './pages/auth/AdminAuth/ResetPassword';
 import TeacherLoginPage from './pages/auth/TeacherAuth/TeacherLogin';
 import StudentLoginPage from './pages/auth/StudentAuth/StudentLogin';
 import TeacherDashboard from './pages/teacher/TeacherDashboard';
+import TeacherMyClasses from './pages/teacher/MyClasses';
+import TeacherClassStudents from './pages/teacher/ClassStudents';
+import TeacherHomeworkAssignments from './pages/teacher/HomeworkAssignments';
 import StudentDashboard from './pages/student/StudentDashboard';
+import StudentHomework from './pages/student/StudentHomework';
+import StudentAssignmentDetail from './pages/student/StudentAssignmentDetail';
+import StudentFees from './pages/student/StudentFees';
+import StudentModulePlaceholder from './pages/student/StudentModulePlaceholder';
 import PortalAccess from './pages/portal/PortalAccess';
 import AdminLayout from './layouts/AdminLayout';
+import TeacherLayout from './layouts/TeacherLayout';
+import StudentLayout from './layouts/StudentLayout';
 import AdminDashboard from './pages/admin/AdminDashboard';
 import StudentManagement from './pages/admin/StudentManagement';
 import StudentProfilePage from './pages/admin/StudentProfile';
@@ -123,11 +132,22 @@ function AppContent() {
         </Route>
 
         <Route element={<ProtectedRoute allowedRoles={['teacher']} />}>
-          <Route path="/teacher/dashboard" element={<TeacherDashboard />} />
+          <Route path="/teacher/dashboard" element={<TeacherLayout />}>
+            <Route index element={<TeacherDashboard />} />
+            <Route path="my-classes" element={<TeacherMyClasses />} />
+            <Route path="my-classes/:classId" element={<TeacherClassStudents />} />
+            <Route path="homework" element={<TeacherHomeworkAssignments />} />
+          </Route>
         </Route>
 
         <Route element={<ProtectedRoute allowedRoles={['student']} />}>
-          <Route path="/student/dashboard" element={<StudentDashboard />} />
+          <Route path="/student/dashboard" element={<StudentLayout />}>
+            <Route index element={<StudentDashboard />} />
+            <Route path="homework" element={<StudentHomework />} />
+            <Route path="homework/:assignmentId" element={<StudentAssignmentDetail />} />
+            <Route path="fees" element={<StudentFees />} />
+            <Route path="examination" element={<StudentModulePlaceholder module="examination" />} />
+          </Route>
         </Route>
 
         <Route path="/portal/access" element={<PortalAccess />} />

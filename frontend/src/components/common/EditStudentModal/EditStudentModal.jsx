@@ -97,7 +97,7 @@ const EditStudentModal = ({ student, isOpen, onClose, onSave }) => {
 
   return (
     <Modal isOpen={isOpen} onClose={onClose} title={t('edit') + ' ' + t('student')} maxWidth="max-w-2xl">
-      <div className="max-h-[70vh] overflow-y-auto pr-1 -mr-1">
+      <>
         {error && <Alert message={error} type="error" />}
 
         <CardSection title={t('basicInformation')}>
@@ -166,12 +166,12 @@ const EditStudentModal = ({ student, isOpen, onClose, onSave }) => {
             </div>
           </CardSection>
         </div>
-      </div>
 
-      <div className="flex items-center justify-end gap-3 pt-5 mt-5 border-t border-gray-200 dark:border-gray-700">
-        <Button variant="secondary" onClick={onClose} disabled={loading}>{t('cancel')}</Button>
-        <Button variant="primary" onClick={handleSave} loading={loading}>{t('update')} {t('student')}</Button>
-      </div>
+        <div className="flex items-center justify-end gap-3 pt-5 mt-5 border-t border-gray-200 dark:border-gray-700">
+          <Button variant="secondary" onClick={onClose} disabled={loading}>{t('cancel')}</Button>
+          <Button variant="primary" onClick={handleSave} loading={loading}>{t('update')} {t('student')}</Button>
+        </div>
+      </>
     </Modal>
   );
 };

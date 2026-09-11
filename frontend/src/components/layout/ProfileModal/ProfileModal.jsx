@@ -9,7 +9,7 @@ import { getImageUrl } from '../../../utils/imageUrl';
 import Spinner from '../../common/Spinner/Spinner';
 import { useFormatTime } from '../../../hooks/useLocalization';
 
-const ProfileModal = ({ isOpen, onClose, onProfileUpdated }) => {
+const ProfileModal = ({ isOpen, onClose, onProfileUpdated, initialEdit = false, readOnly = false }) => {
   const formatTime = useFormatTime();
 
   const formatDate = (dateStr) => {
@@ -36,7 +36,7 @@ const ProfileModal = ({ isOpen, onClose, onProfileUpdated }) => {
       setEditForm({ fullName: data.user.fullName || '', phone: data.user.phone || '' });
       setImagePreview(null);
       setImageFile(null);
-      setIsEditing(false);
+      setIsEditing(Boolean(initialEdit) && !readOnly);
       setFieldErrors({});
     } catch {
       setError('Failed to load profile');
@@ -307,9 +307,11 @@ const ProfileModal = ({ isOpen, onClose, onProfileUpdated }) => {
                     <Button variant="secondary" onClick={handleClose}>
                       Cancel
                     </Button>
-                    <Button onClick={() => { setIsEditing(true); setError(''); setFieldErrors({}); }}>
-                      Edit Profile
-                    </Button>
+                    {!readOnly && (
+                      <Button onClick={() => { setIsEditing(true); setError(''); setFieldErrors({}); }}>
+                        Edit Profile
+                      </Button>
+                    )}
                   </>
                 )}
               </div>

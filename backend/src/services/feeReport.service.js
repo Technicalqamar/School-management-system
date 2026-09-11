@@ -3,6 +3,7 @@ import FeeStructure from '../models/feeStructure.model.js';
 import FeeCollection from '../models/feeCollection.model.js';
 import SchoolSettings from '../models/schoolSettings.model.js';
 import { ApiError } from '../utils/apiError.js';
+import feeOutstandingService from './feeOutstanding.service.js';
 
 const CLASS_TO_FEE_CLASS = {
   Montessori: 'Montessori',
@@ -85,7 +86,7 @@ const resolveFeeType = (feeType) => {
 
 const feeTypeToLabel = (canonical) => (canonical === 'All' ? 'All Fees' : FEE_TYPE_LABELS[canonical]);
 
-const enumerateLines = ({ studentPayments, structure, canonicalFeeType, fromStr, toStr, monthStartIndex = 0, monthEndIndex = MONTHS.length - 1 }) => {
+const enumerateLines = ({ studentPayments, structure, canonicalFeeType, fromStr, toStr, monthStartIndex = 0, monthEndIndex = MONTHS.length - 1, examStartIndex = 0, examEndIndex = MONTHS.length - 1 }) => {
   const groups = new Map();
 
   for (const payment of studentPayments) {
@@ -195,7 +196,7 @@ const enumerateLines = ({ studentPayments, structure, canonicalFeeType, fromStr,
     for (const exam of EXAMS) {
       const examMonthIndex = MONTHS.indexOf(EXAM_MONTHS[exam]);
 
-      if (examMonthIndex < monthStartIndex || examMonthIndex > monthEndIndex) continue;
+      if (examMonthIndex < examStartIndex || examMonthIndex > examEndIndex) continue;
 
       buildLine('Examination', EXAM_MONTHS[exam], exam);
     }
@@ -368,31 +369,20 @@ const buildStudentReport = async ({ studentId, students, structureByFeeClass, pa
   const structure = structureByFeeClass.get(CLASS_TO_FEE_CLASS[student.class] || student.class);
   const studentPayments = paymentsByStudent.get(String(student._id)) || [];
 
-  let monthStartIndex = 0;
-  let monthEndIndex = MONTHS.length - 1;
+  // Monthly fee cycle always starts at the student's actual admission month
+  // (reusing the central dues rule) and never runs past the actual current
+  // month — no hard-coded month/year. Older students admitted in previous
+  // years keep the full year so genuine historical dues stay visible.
+  const admissionDate = student.admissionDate || student.createdAt;
+  const monthStartIndex = feeOutstandingService.computeDuesStartMonthIndex(admissionDate, academicYear);
+  const monthEndIndex = Math.min(new Date().getMonth(), MONTHS.length - 1);
 
-  if (respectAdmission) {
-    const academicYearNum = Number.isNaN(Number(academicYear)) ? new Date().getFullYear() : Number(academicYear);
-    const admissionDate = student.admissionDate || student.createdAt;
+  // Examination window keeps its existing behaviour: window-filtered only when
+  // the caller explicitly opts in (student profile), full range otherwise.
+  const examStartIndex = respectAdmission ? monthStartIndex : 0;
+  const examEndIndex = respectAdmission ? monthEndIndex : MONTHS.length - 1;
 
-    if (admissionDate) {
-      const parsedAdmission = new Date(admissionDate);
-
-      if (!Number.isNaN(parsedAdmission.getTime())) {
-        const admissionYear = parsedAdmission.getFullYear();
-
-        if (admissionYear === academicYearNum) {
-          monthStartIndex = parsedAdmission.getMonth();
-        } else if (admissionYear > academicYearNum) {
-          monthStartIndex = MONTHS.length;
-        }
-      }
-    }
-
-    monthEndIndex = Math.min(new Date().getMonth(), MONTHS.length - 1);
-  }
-
-  const lines = enumerateLines({ studentPayments, structure, canonicalFeeType, fromStr, toStr, monthStartIndex, monthEndIndex });
+  const lines = enumerateLines({ studentPayments, structure, canonicalFeeType, fromStr, toStr, monthStartIndex, monthEndIndex, examStartIndex, examEndIndex });
   const totals = rollupLines(lines);
 
   return {

@@ -30,6 +30,13 @@ import feeOutstandingRoutes from './routes/feeOutstanding.routes.js';
 import feeReportRoutes from './routes/feeReport.routes.js';
 import feeVoucherRoutes from './routes/feeVoucher.routes.js';
 import dashboardRoutes from './routes/dashboard.routes.js';
+import teacherDashboardRoutes from './routes/teacherDashboard.routes.js';
+import teacherMyClassesRoutes from './routes/teacherMyClasses.routes.js';
+import teacherClassStudentsRoutes from './routes/teacherClassStudents.routes.js';
+import teacherHomeworkRoutes from './routes/teacherHomework.routes.js';
+import studentDashboardRoutes from './routes/studentDashboard.routes.js';
+import studentHomeworkRoutes from './routes/studentHomework.routes.js';
+import studentFeesRoutes from './routes/studentFees.routes.js';
 import portalRoutes from './routes/portal.routes.js';
 import { errorHandler } from './middlewares/error.middleware.js';
 
@@ -87,6 +94,13 @@ app.use('/api/v1/fees/outstanding-dues', feeOutstandingRoutes);
 app.use('/api/v1/fees/reports', feeReportRoutes);
 app.use('/api/v1/fees/vouchers', feeVoucherRoutes);
 app.use('/api/v1/dashboard', dashboardRoutes);
+app.use('/api/v1/teacher/dashboard', teacherDashboardRoutes);
+app.use('/api/v1/teacher/my-classes', teacherMyClassesRoutes);
+app.use('/api/v1/teacher/my-classes', teacherClassStudentsRoutes);
+app.use('/api/v1/teacher/homework', teacherHomeworkRoutes);
+app.use('/api/v1/student/dashboard', studentDashboardRoutes);
+app.use('/api/v1/student/homework', studentHomeworkRoutes);
+app.use('/api/v1/student/fees', studentFeesRoutes);
 app.use('/api/v1/portal', portalRoutes);
 
 // Health check
