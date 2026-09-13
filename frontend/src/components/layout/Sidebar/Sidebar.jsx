@@ -266,6 +266,7 @@ const Sidebar = ({ isOpen, toggleSidebar }) => {
                         { to: '/admin/exams/setup', label: 'Exam Setup' },
                         { to: '/admin/exams/subjects-marks', label: 'Subjects & Marks' },
                         { to: '/admin/exams/schedule', label: 'Exam Schedule' },
+                        { to: '/admin/exams/admit-card', label: 'Admit Card' },
                         { to: '/admin/exams/marks-entry', label: 'Marks Entry' },
                         { to: '/admin/exams/results', label: 'Results' },
                         { to: '/admin/exams/result-history', label: 'Result History' },

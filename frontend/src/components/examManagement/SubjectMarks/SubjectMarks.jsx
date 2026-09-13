@@ -71,7 +71,7 @@ const SubjectMarks = () => {
   useEffect(() => {
     let mounted = true;
     examService.getAllExams({ limit: 100 }).then((res) => {
-      if (mounted) setExams(res.data?.exams || []);
+      if (mounted) setExams((res.data?.exams || []).filter((exam) => exam.type !== 'Monthly Test'));
     });
     return () => {
       mounted = false;

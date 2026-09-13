@@ -78,7 +78,7 @@ const ExamSchedule = () => {
       ([examsRes, subjectsRes]) => {
         if (!mounted) return;
         if (examsRes.status === 'fulfilled') {
-          setExams(examsRes.value.data?.exams || []);
+          setExams((examsRes.value.data?.exams || []).filter((exam) => exam.type !== 'Monthly Test'));
         }
         if (subjectsRes.status === 'fulfilled') {
           setAllSubjects(subjectsRes.value.data?.subjects || []);

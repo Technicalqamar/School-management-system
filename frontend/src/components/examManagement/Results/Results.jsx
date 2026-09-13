@@ -1,48 +1,80 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
-import { ArrowPathIcon, DocumentCheckIcon, EyeIcon } from '@heroicons/react/24/outline';
-import SearchInput from '../../common/SearchInput/SearchInput';
+import toast from 'react-hot-toast';
+import {
+  ArrowPathIcon,
+  EyeIcon,
+  PrinterIcon,
+  ArrowDownTrayIcon,
+  MagnifyingGlassIcon,
+  DocumentCheckIcon,
+  XMarkIcon,
+} from '@heroicons/react/24/outline';
 import Table from '../../common/Table/Table';
 import Modal from '../../common/Modal/Modal';
 import SelectInput from '../../common/SelectInput/SelectInput';
+import Alert from '../../common/Alert/Alert';
+import Spinner from '../../common/Spinner/Spinner';
 import { useSchoolConfig } from '../../../contexts/SchoolConfigContext';
+import examService from '../../../services/exam/exam.service';
+import resultService from '../../../services/result/result.service';
+import studentService from '../../../services/student/student.service';
+import { optionId, buildIdOptions, buildIdOptionValue } from '../../../services/exam/optionUtils';
+import { CLASS_NAMES } from '../../../utils/classNames';
 import {
-  exams,
-  subjectMarks,
-  examStudents,
-  initialMarksData,
-} from '../../../data/examManagement/dummyData';
+  getInitials,
+  gradeBadgeClass,
+  statusBadgeClass,
+  buildMarksheetHtml as buildMarksheetHtmlShared,
+  printMarksheet,
+  downloadMarksheetPdf,
+} from '../shared/marksheet';
+import MarksheetPreview from '../shared/MarksheetPreview';
 
-const GRADE_SYSTEM = [
-  { min: 90, max: 100, grade: 'A+' },
-  { min: 80, max: 89, grade: 'A' },
-  { min: 70, max: 79, grade: 'B' },
-  { min: 60, max: 69, grade: 'C' },
-  { min: 50, max: 59, grade: 'D' },
-  { min: 0, max: 49, grade: 'F' },
-];
-
-const getGrade = (pct) => {
-  if (pct === null || pct === undefined) return '-';
-  for (const g of GRADE_SYSTEM) {
-    if (pct >= g.min && pct <= g.max) return g.grade;
-  }
-  return 'F';
-};
+const examLabel = (exam) => `${exam.name} (${exam.type})`;
 
 const Results = () => {
-  const { academic } = useSchoolConfig();
+  const { schoolInfo, academic } = useSchoolConfig();
 
   const centralYear = academic?.currentYear || '';
   const centralYearOptions = centralYear ? [centralYear] : [];
 
   const [academicYear, setAcademicYear] = useState(() => centralYear || '');
+  const [exams, setExams] = useState([]);
   const [examId, setExamId] = useState('');
   const [className, setClassName] = useState('');
-  const [search, setSearch] = useState('');
-  const [filterStatus, setFilterStatus] = useState('');
+
+  const [studentQuery, setStudentQuery] = useState('');
+  const [searchResults, setSearchResults] = useState([]);
+  const [searching, setSearching] = useState(false);
+  const [hasSearched, setHasSearched] = useState(false);
+  const [inputFocused, setInputFocused] = useState(false);
+  const [selectedStudent, setSelectedStudent] = useState(null);
+
   const [generated, setGenerated] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [mode, setMode] = useState('');
+  const [results, setResults] = useState([]);
+  const [result, setResult] = useState(null);
+  const [exporting, setExporting] = useState(false);
+  const [printing, setPrinting] = useState(false);
   const [showViewModal, setShowViewModal] = useState(false);
-  const [viewStudent, setViewStudent] = useState(null);
+  const [viewResult, setViewResult] = useState(null);
+
+  useEffect(() => {
+    let mounted = true;
+    examService
+      .getAllExams({ limit: 100 })
+      .then((res) => {
+        if (mounted) setExams((res.data?.exams || []).filter((exam) => exam.type !== 'Monthly Test'));
+      })
+      .catch(() => {
+        if (mounted) setExams([]);
+      });
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   useEffect(() => {
     if (!centralYear || academicYear === centralYear) {
@@ -52,98 +84,187 @@ const Results = () => {
       setAcademicYear(centralYear);
       setExamId('');
       setClassName('');
+      setSelectedStudent(null);
       setGenerated(false);
+      setResult(null);
+      setResults([]);
     }, 0);
     return () => clearTimeout(timer);
   }, [centralYear, academicYear]);
 
-  const filteredExams = useMemo(() => {
-    if (!academicYear) return [];
-    return exams.filter((e) => e.academicYear === academicYear);
-  }, [academicYear]);
+  const yearOptions = useMemo(() => {
+    const years = new Set(exams.map((e) => String(e.academicYear)).filter(Boolean));
+    if (centralYear) years.add(centralYear);
+    return [...years].sort((a, b) => Number(b) - Number(a));
+  }, [exams, centralYear]);
 
-  const filteredClasses = useMemo(() => {
-    if (!examId) return [];
-    const exam = exams.find((e) => e.id === Number(examId));
-    return exam ? exam.classes : [];
-  }, [examId]);
+  const yearExams = useMemo(
+    () => exams.filter((e) => String(e.academicYear) === String(academicYear)),
+    [exams, academicYear],
+  );
 
-  const requiredSubjects = useMemo(() => {
-    if (!examId || !className) return [];
-    return subjectMarks.filter(
-      (s) => s.examId === Number(examId) && s.className === className && s.academicYear === academicYear && s.status === 'Active'
-    );
-  }, [examId, className, academicYear]);
+  const examOptions = useMemo(() => buildIdOptions(yearExams, examLabel), [yearExams]);
+  const examOptionValue = useMemo(() => buildIdOptionValue(yearExams, examId, examLabel), [yearExams, examId]);
 
-  const studentsInClass = useMemo(() => {
-    if (!className) return [];
-    return examStudents.filter((s) => s.className === className);
-  }, [className]);
+  const selectedExam = useMemo(
+    () => exams.find((e) => String(e._id) === String(examId)) || null,
+    [exams, examId],
+  );
 
-  const results = useMemo(() => {
-    if (!generated || !examId || !className || requiredSubjects.length === 0) return [];
+  const availableClassNames = useMemo(() => {
+    if (selectedExam && Array.isArray(selectedExam.classes) && selectedExam.classes.length > 0) {
+      return selectedExam.classes;
+    }
+    return CLASS_NAMES;
+  }, [selectedExam]);
 
-    return studentsInClass.map((student) => {
-      const subjectResults = requiredSubjects.map((subj) => {
-        const mark = initialMarksData.find(
-          (m) => m.studentId === student.id && m.examId === Number(examId) && m.className === className && m.subjectName === subj.subjectName && m.academicYear === academicYear
-        );
-        return {
-          subjectName: subj.subjectName,
-          subjectCode: subj.subjectCode,
-          totalMarks: subj.totalMarks,
-          passingMarks: subj.passingMarks,
-          obtainedMarks: mark ? mark.obtainedMarks : null,
-          percentage: mark ? Number(((mark.obtainedMarks / subj.totalMarks) * 100).toFixed(1)) : null,
-          grade: mark ? getGrade(((mark.obtainedMarks / subj.totalMarks) * 100).toFixed(1)) : '-',
-          passed: mark ? mark.obtainedMarks >= subj.passingMarks : false,
-          entered: mark !== null && mark !== undefined,
-        };
-      });
-
-      const totalMarksAll = subjectResults.reduce((sum, s) => sum + s.totalMarks, 0);
-      const obtainedMarksAll = subjectResults.filter((s) => s.entered).reduce((sum, s) => sum + s.obtainedMarks, 0);
-      const allEntered = subjectResults.every((s) => s.entered);
-      const allPassed = subjectResults.every((s) => !s.entered || s.passed);
-      const percentage = allEntered ? Number(((obtainedMarksAll / totalMarksAll) * 100).toFixed(1)) : null;
-
-      let status;
-      if (!allEntered) {
-        status = 'Pending';
-      } else if (allPassed) {
-        status = 'Passed';
-      } else {
-        status = 'Failed';
+  useEffect(() => {
+    let cancelled = false;
+    const timer = setTimeout(() => {
+      const q = studentQuery.trim().toLowerCase();
+      if (!q) {
+        if (!cancelled) {
+          setSearchResults([]);
+          setSearching(false);
+          setHasSearched(false);
+        }
+        return undefined;
       }
+      setSearching(true);
+      const params = { search: q, limit: 50 };
+      if (className) params.class = className;
+      if (academicYear) params.academicYear = academicYear;
+      studentService
+        .getAllStudents(params)
+        .then((res) => {
+          if (!cancelled) {
+            setSearchResults(res.data?.students || []);
+            setSearching(false);
+            setHasSearched(true);
+          }
+        })
+        .catch(() => {
+          if (!cancelled) {
+            setSearchResults([]);
+            setSearching(false);
+            setHasSearched(true);
+          }
+        });
+    }, 300);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [studentQuery, className, academicYear]);
 
-      return {
-        student,
-        subjectResults,
-        totalMarks: totalMarksAll,
-        obtainedMarks: allEntered ? obtainedMarksAll : null,
-        percentage,
-        grade: percentage !== null ? getGrade(percentage) : '-',
-        status,
-        allEntered,
-      };
-    });
-  }, [generated, examId, className, academicYear, requiredSubjects, studentsInClass]);
+  const selectStudent = (student) => {
+    setSelectedStudent(student);
+    setSearchResults([]);
+    setStudentQuery('');
+    setInputFocused(false);
+    setGenerated(false);
+    setResult(null);
+    setResults([]);
+    setMode('');
+    setError('');
+  };
 
-  const filteredResults = useMemo(() => {
-    if (!search && !filterStatus) return results;
-    return results.filter((r) => {
-      const q = search.toLowerCase();
-      const matchSearch = !search ||
-        r.student.id.toLowerCase().includes(q) ||
-        r.student.name.toLowerCase().includes(q) ||
-        r.student.rollNumber.toLowerCase().includes(q);
-      const matchStatus = !filterStatus || r.status === filterStatus;
-      return matchSearch && matchStatus;
-    });
-  }, [results, search, filterStatus]);
+  const showSuggestions = !!studentQuery.trim() && searchResults.length > 0 && (inputFocused || hasSearched);
+
+  const handleExamChange = (e) => {
+    setExamId(optionId(e.target.value));
+    setClassName('');
+    setSelectedStudent(null);
+    setGenerated(false);
+    setResult(null);
+    setResults([]);
+    setMode('');
+    setError('');
+  };
+
+  const handleClassChange = (e) => {
+    setClassName(e.target.value);
+    setSelectedStudent(null);
+    setGenerated(false);
+    setResult(null);
+    setResults([]);
+    setMode('');
+    setError('');
+  };
+
+  const handleGenerate = async () => {
+    if (!academicYear || !examId || !className) return;
+    setLoading(true);
+    setError('');
+    setGenerated(false);
+    setResult(null);
+    setResults([]);
+    setMode('');
+    try {
+      const params = { academicYear, examId, className };
+      if (selectedStudent) {
+        params.studentId = selectedStudent._id;
+      }
+      const res = await resultService.getResults(params);
+      const data = res.data || {};
+      if (data.mode === 'individual') {
+        setResult(data.result || null);
+        setMode('individual');
+      } else {
+        setResults(data.results || []);
+        setMode('class');
+      }
+      setGenerated(true);
+    } catch (err) {
+      const msg = err.response?.data?.message || 'Failed to generate the result';
+      setError(msg);
+      toast.error(msg);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleReset = () => {
+    setAcademicYear(centralYear);
+    setExamId('');
+    setClassName('');
+    setStudentQuery('');
+    setSearchResults([]);
+    setSelectedStudent(null);
+    setGenerated(false);
+    setResult(null);
+    setResults([]);
+    setMode('');
+    setError('');
+  };
+
+  const buildMarksheetHtml = useCallback(
+    (record) => buildMarksheetHtmlShared(record, schoolInfo),
+    [schoolInfo],
+  );
+
+  const handlePrint = useCallback(
+    (record) => {
+      printMarksheet(buildMarksheetHtml(record), setPrinting);
+    },
+    [buildMarksheetHtml],
+  );
+
+  const handleExportPdf = useCallback(
+    (record) => {
+      const html = buildMarksheetHtml(record);
+      if (!html) return;
+      const slug = record.student.studentId || record.student.fullName.replace(/\s+/g, '-');
+      const filename = `Marksheet-${slug}-${(record.exam?.name || 'Exam').replace(/\s+/g, '-')}-${record.academicYear}.pdf`;
+      downloadMarksheetPdf(html, filename, setExporting);
+    },
+    [buildMarksheetHtml],
+  );
+
+  const renderMarksheet = (record) => <MarksheetPreview record={record} schoolInfo={schoolInfo} />;
 
   const summary = useMemo(() => {
-    if (results.length === 0) return null;
+    if (!generated || mode !== 'class' || results.length === 0) return null;
     const totalStudents = results.length;
     const withMarks = results.filter((r) => r.allEntered).length;
     const passed = results.filter((r) => r.status === 'Passed').length;
@@ -153,35 +274,13 @@ const Results = () => {
     const avg = avgPct.length > 0
       ? Number((avgPct.reduce((sum, r) => sum + r.percentage, 0) / avgPct.length).toFixed(1))
       : null;
-
     return { totalStudents, withMarks, passed, failed, pending, avg };
-  }, [results]);
-
-  const handleGenerate = useCallback(() => {
-    if (!academicYear || !examId || !className) return;
-    setGenerated(true);
-    setSearch('');
-    setFilterStatus('');
-  }, [academicYear, examId, className]);
-
-  const handleReset = useCallback(() => {
-    setAcademicYear(centralYear);
-    setExamId('');
-    setClassName('');
-    setSearch('');
-    setFilterStatus('');
-    setGenerated(false);
-  }, [centralYear]);
-
-  const openView = (result) => {
-    setViewStudent(result);
-    setShowViewModal(true);
-  };
+  }, [generated, mode, results]);
 
   const tableColumns = [
-    { key: 'id', label: 'Student ID' },
-    { key: 'name', label: 'Student Name' },
-    { key: 'rollNumber', label: 'Roll No.' },
+    { key: 'studentId', label: 'Student ID' },
+    { key: 'fullName', label: 'Student Name' },
+    { key: 'className', label: 'Class' },
     { key: 'totalMarks', label: 'Total' },
     { key: 'obtainedMarks', label: 'Obtained' },
     { key: 'percentage', label: 'Percentage' },
@@ -190,65 +289,182 @@ const Results = () => {
     { key: 'actions', label: 'Actions', className: 'text-right' },
   ];
 
-  const renderRow = (result) => (
+  const renderRow = (record) => (
     <>
-      <td className="px-4 py-3 font-mono text-xs text-gray-600 dark:text-gray-400">{result.student.id}</td>
+      <td className="px-4 py-3 font-mono text-xs text-gray-600 dark:text-gray-400">{record.student.studentId}</td>
       <td className="px-4 py-3">
-        <span className="font-medium text-gray-900 dark:text-white">{result.student.name}</span>
+        <span className="font-medium text-gray-900 dark:text-white">{record.student.fullName}</span>
       </td>
-      <td className="px-4 py-3 text-gray-700 dark:text-gray-300">{result.student.rollNumber}</td>
-      <td className="px-4 py-3 text-center text-sm font-medium text-gray-900 dark:text-white">{result.totalMarks}</td>
+      <td className="px-4 py-3 text-gray-700 dark:text-gray-300">{record.className}</td>
+      <td className="px-4 py-3 text-center text-sm font-medium text-gray-900 dark:text-white">{record.totalMarks}</td>
       <td className="px-4 py-3 text-center">
-        {result.obtainedMarks !== null ? (
-          <span className="text-sm font-semibold text-gray-900 dark:text-white">{result.obtainedMarks}</span>
+        {record.obtainedMarks !== null ? (
+          <span className="text-sm font-semibold text-gray-900 dark:text-white">{record.obtainedMarks}</span>
         ) : (
           <span className="text-xs text-gray-400">—</span>
         )}
       </td>
       <td className="px-4 py-3 text-center">
-        {result.percentage !== null ? (
-          <span className="text-sm font-medium text-gray-900 dark:text-white">{result.percentage}%</span>
+        {record.percentage !== null ? (
+          <span className="text-sm font-medium text-gray-900 dark:text-white">{record.percentage}%</span>
         ) : (
           <span className="text-xs text-gray-400">—</span>
         )}
       </td>
       <td className="px-4 py-3 text-center">
-        <span className={`inline-flex items-center justify-center w-9 h-9 rounded-lg text-sm font-bold ${
-          result.grade === 'A+' ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300'
-          : result.grade === 'A' ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300'
-          : result.grade === 'B' ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300'
-          : result.grade === 'C' ? 'bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-300'
-          : result.grade === 'D' ? 'bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-300'
-          : result.grade === 'F' ? 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300'
-          : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400'
-        }`}>
-          {result.grade}
+        <span className={`inline-flex items-center justify-center w-9 h-9 rounded-lg text-sm font-bold ${gradeBadgeClass(record.grade)}`}>
+          {record.grade}
         </span>
       </td>
       <td className="px-4 py-3">
-        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-          result.status === 'Passed'
-            ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300'
-            : result.status === 'Failed'
-            ? 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300'
-            : 'bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-300'
-        }`}>
-          {result.status}
+        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${statusBadgeClass(record.status)}`}>
+          {record.status}
         </span>
       </td>
       <td className="px-4 py-3 text-right">
-        <button
-          onClick={() => openView(result)}
-          className="p-1.5 rounded-lg text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors cursor-pointer"
-          title="View Result"
-        >
-          <EyeIcon className="h-4 w-4" />
-        </button>
+        <div className="flex items-center justify-end gap-1">
+          <button
+            onClick={() => { setViewResult(record); setShowViewModal(true); }}
+            className="p-1.5 rounded-lg text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors cursor-pointer"
+            title="View Marksheet"
+          >
+            <EyeIcon className="h-4 w-4" />
+          </button>
+          <button
+            onClick={() => handlePrint(record)}
+            disabled={printing}
+            className="p-1.5 rounded-lg text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors cursor-pointer disabled:opacity-50"
+            title="Print Marksheet"
+          >
+            <PrinterIcon className="h-4 w-4" />
+          </button>
+          <button
+            onClick={() => handleExportPdf(record)}
+            disabled={exporting}
+            className="p-1.5 rounded-lg text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors cursor-pointer disabled:opacity-50"
+            title="Download PDF"
+          >
+            <ArrowDownTrayIcon className="h-4 w-4" />
+          </button>
+        </div>
       </td>
     </>
   );
 
-  const displayExam = exams.find((e) => e.id === Number(examId));
+  const renderPreview = () => {
+    if (loading) {
+      return (
+        <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-16">
+          <div className="flex flex-col items-center justify-center gap-4">
+            <Spinner size="md" className="text-blue-600 dark:text-blue-400" />
+            <p className="text-sm text-gray-500 dark:text-gray-400">Calculating results from entered marks...</p>
+          </div>
+        </div>
+      );
+    }
+
+    if (error && !generated) {
+      return (
+        <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-8">
+          <Alert message={error} type="error" className="mb-4" />
+          <div className="flex justify-center">
+            <button
+              onClick={handleGenerate}
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium text-white bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 transition-all cursor-pointer"
+            >
+              <ArrowPathIcon className="h-4 w-4" /> Try Again
+            </button>
+          </div>
+        </div>
+      );
+    }
+
+    if (generated && mode === 'individual' && result) {
+      return (
+        <div className="space-y-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h2 className="text-sm font-semibold text-gray-900 dark:text-white">Marksheet Preview</h2>
+              <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                {result.student.fullName} • {result.student.studentId} • {result.className}
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => handlePrint(result)}
+                disabled={printing}
+                className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium text-gray-700 dark:text-gray-300 border border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                {printing ? <Spinner size="xs" /> : <PrinterIcon className="h-4 w-4" />} Print Marksheet
+              </button>
+              <button
+                onClick={() => handleExportPdf(result)}
+                disabled={exporting}
+                className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium text-white bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed whitespace-nowrap"
+              >
+                {exporting ? <Spinner size="xs" className="text-white" /> : <ArrowDownTrayIcon className="h-4 w-4" />} Download PDF
+              </button>
+            </div>
+          </div>
+          {renderMarksheet(result)}
+        </div>
+      );
+    }
+
+    if (generated && mode === 'class' && results.length > 0) {
+      return (
+        <div className="space-y-6">
+          {summary && (
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
+              <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-4">
+                <p className="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1">Total Students</p>
+                <p className="text-2xl font-bold text-gray-900 dark:text-white">{summary.totalStudents}</p>
+              </div>
+              <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-4">
+                <p className="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1">With Marks</p>
+                <p className="text-2xl font-bold text-blue-600 dark:text-blue-400">{summary.withMarks}</p>
+              </div>
+              <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-4">
+                <p className="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1">Passed</p>
+                <p className="text-2xl font-bold text-green-600 dark:text-green-400">{summary.passed}</p>
+              </div>
+              <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-4">
+                <p className="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1">Failed</p>
+                <p className="text-2xl font-bold text-red-600 dark:text-red-400">{summary.failed}</p>
+              </div>
+              <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-4">
+                <p className="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1">Avg. Percentage</p>
+                <p className="text-2xl font-bold text-gray-900 dark:text-white">{summary.avg !== null ? `${summary.avg}%` : '—'}</p>
+              </div>
+            </div>
+          )}
+
+          <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4">
+              <h2 className="text-sm font-semibold text-gray-900 dark:text-white">
+                Student Results <span className="text-xs font-normal text-gray-500 dark:text-gray-400">({results.length})</span>
+              </h2>
+            </div>
+            <Table columns={tableColumns} data={results} renderRow={renderRow} />
+          </div>
+        </div>
+      );
+    }
+
+    return (
+      <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-12">
+        <div className="text-center">
+          <div className="mx-auto w-16 h-16 rounded-full bg-blue-50 dark:bg-blue-900/30 flex items-center justify-center mb-4">
+            <DocumentCheckIcon className="h-8 w-8 text-blue-500 dark:text-blue-400" />
+          </div>
+          <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">Result / Marksheet</h3>
+          <p className="text-sm text-gray-500 dark:text-gray-400 max-w-md mx-auto">
+            Select Academic Year, Exam and Class, then click <strong>Generate Result</strong> to view results calculated from teacher-entered marks — or search and select a specific student to generate their marksheet.
+          </p>
+        </div>
+      </div>
+    );
+  };
 
   return (
     <div className="space-y-6">
@@ -256,7 +472,7 @@ const Results = () => {
         <div>
           <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Results</h1>
           <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-            View and analyze examination results based on entered marks.
+            Generate and view student results and marksheets based on teacher-entered marks.
           </p>
         </div>
       </div>
@@ -267,22 +483,32 @@ const Results = () => {
           <h2 className="text-sm font-semibold text-gray-900 dark:text-white">Select Examination Details</h2>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           <SelectInput
             label="Academic Year"
             name="academicYear"
-            value={academicYear}
-            onChange={(e) => { setAcademicYear(e.target.value); setExamId(''); setClassName(''); setGenerated(false); }}
-            options={centralYearOptions}
+            value={academicYear || ''}
+            onChange={(e) => {
+              setAcademicYear(e.target.value);
+              setExamId('');
+              setClassName('');
+              setSelectedStudent(null);
+              setGenerated(false);
+              setResult(null);
+              setResults([]);
+              setMode('');
+              setError('');
+            }}
+            options={yearOptions.length > 0 ? yearOptions : centralYearOptions}
             placeholder="Select year"
             required
           />
           <SelectInput
             label="Exam"
             name="examId"
-            value={examId}
-            onChange={(e) => { setExamId(e.target.value); setClassName(''); setGenerated(false); }}
-            options={filteredExams.map((e) => String(e.id))}
+            value={examOptionValue}
+            onChange={handleExamChange}
+            options={examOptions}
             placeholder={academicYear ? 'Select exam' : 'Select year first'}
             disabled={!academicYear}
             required
@@ -291,21 +517,88 @@ const Results = () => {
             label="Class"
             name="className"
             value={className}
-            onChange={(e) => { setClassName(e.target.value); setGenerated(false); }}
-            options={filteredClasses}
+            onChange={handleClassChange}
+            options={availableClassNames}
             placeholder={examId ? 'Select class' : 'Select exam first'}
             disabled={!examId}
             required
           />
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
+              Student <span className="text-xs font-normal text-gray-400 dark:text-gray-500">(optional)</span>
+            </label>
+            <div className="relative">
+              <div className="relative">
+                <MagnifyingGlassIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400 pointer-events-none" />
+                <input
+                  type="text"
+                  placeholder="Search by Student ID or Name..."
+                  value={studentQuery}
+                  onChange={(e) => setStudentQuery(e.target.value)}
+                  onFocus={() => setInputFocused(true)}
+                  onBlur={() => setTimeout(() => setInputFocused(false), 150)}
+                  className="w-full pl-9 pr-4 py-2.5 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm text-gray-700 dark:text-gray-200 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
+                />
+                {searching && (
+                  <span className="absolute right-3 top-1/2 -translate-y-1/2">
+                    <Spinner size="xs" className="text-blue-500" />
+                  </span>
+                )}
+              </div>
+              {showSuggestions && (
+                <div className="absolute left-0 right-0 top-full mt-1.5 z-20 bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 shadow-lg max-h-64 overflow-y-auto divide-y divide-gray-100 dark:divide-gray-700">
+                  {searchResults.map((s) => (
+                    <button
+                      key={s._id}
+                      type="button"
+                      onClick={() => selectStudent(s)}
+                      className="w-full flex items-center gap-3 px-3 py-2.5 text-left hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors cursor-pointer"
+                    >
+                      <div className="w-9 h-9 rounded-full bg-gradient-to-br from-blue-600 to-blue-800 flex items-center justify-center text-white font-bold text-xs flex-shrink-0">
+                        {getInitials(s.fullName)}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-medium text-gray-900 dark:text-white">{s.fullName}</p>
+                        <p className="text-xs text-gray-500 dark:text-gray-400 truncate">
+                          {s.studentId} • {s.class || className}
+                        </p>
+                      </div>
+                    </button>
+                  ))}
+                  {!searching && searchResults.length === 0 && (
+                    <p className="px-3 py-2.5 text-sm text-gray-400">No students found</p>
+                  )}
+                </div>
+              )}
+              {selectedStudent && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSelectedStudent(null);
+                    setStudentQuery('');
+                    setSearchResults([]);
+                    setGenerated(false);
+                    setResult(null);
+                    setResults([]);
+                    setMode('');
+                    setError('');
+                  }}
+                  className="mt-2 inline-flex items-center gap-1.5 text-xs text-blue-600 dark:text-blue-400 hover:underline cursor-pointer"
+                >
+                  <XMarkIcon className="h-3.5 w-3.5" /> {selectedStudent.fullName} ({selectedStudent.studentId})
+                </button>
+              )}
+            </div>
+          </div>
         </div>
 
         <div className="flex flex-wrap items-center gap-3">
           <button
             onClick={handleGenerate}
-            disabled={!academicYear || !examId || !className}
+            disabled={!academicYear || !examId || !className || loading}
             className="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-medium text-white bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 disabled:from-gray-400 disabled:to-gray-500 disabled:cursor-not-allowed transition-all cursor-pointer whitespace-nowrap"
           >
-            <EyeIcon className="h-4 w-4" /> View Results
+            {loading ? <Spinner size="xs" className="text-white" /> : <DocumentCheckIcon className="h-4 w-4" />} Generate Result
           </button>
           <button
             onClick={handleReset}
@@ -313,225 +606,46 @@ const Results = () => {
           >
             <ArrowPathIcon className="h-4 w-4" /> Reset
           </button>
-          {generated && displayExam && (
+          {generated && (
             <span className="ml-auto text-sm text-gray-500 dark:text-gray-400">
-              {displayExam.name} • {className} • {academicYear}
+              {selectedExam?.name || 'Exam'}{selectedExam?.type ? ` (${selectedExam.type})` : ''} • {className} • {academicYear}
             </span>
           )}
         </div>
       </div>
 
-      {generated && summary && (
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
-          <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-4">
-            <p className="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1">Total Students</p>
-            <p className="text-2xl font-bold text-gray-900 dark:text-white">{summary.totalStudents}</p>
-          </div>
-          <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-4">
-            <p className="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1">With Marks</p>
-            <p className="text-2xl font-bold text-blue-600 dark:text-blue-400">{summary.withMarks}</p>
-          </div>
-          <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-4">
-            <p className="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1">Passed</p>
-            <p className="text-2xl font-bold text-green-600 dark:text-green-400">{summary.passed}</p>
-          </div>
-          <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-4">
-            <p className="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1">Failed</p>
-            <p className="text-2xl font-bold text-red-600 dark:text-red-400">{summary.failed}</p>
-          </div>
-          <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-4">
-            <p className="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1">Avg. Percentage</p>
-            <p className="text-2xl font-bold text-gray-900 dark:text-white">{summary.avg !== null ? `${summary.avg}%` : '—'}</p>
-          </div>
-        </div>
-      )}
-
-      {generated ? (
-        <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-4">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4">
-            <h2 className="text-sm font-semibold text-gray-900 dark:text-white">Student Results</h2>
-            <div className="flex items-center gap-3">
-              <div className="w-56">
-                <SearchInput placeholder="Search student ID, name..." value={search} onChange={setSearch} />
-              </div>
-              <SelectInput
-                name="filterStatus"
-                value={filterStatus}
-                onChange={(e) => setFilterStatus(e.target.value)}
-                options={['Passed', 'Failed', 'Pending']}
-                placeholder="All Status"
-              />
-            </div>
-          </div>
-          <Table columns={tableColumns} data={filteredResults} renderRow={renderRow} />
-        </div>
-      ) : (
-        <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-12">
-          <div className="text-center">
-            <div className="mx-auto w-16 h-16 rounded-full bg-blue-50 dark:bg-blue-900/30 flex items-center justify-center mb-4">
-              <DocumentCheckIcon className="h-8 w-8 text-blue-500 dark:text-blue-400" />
-            </div>
-            <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">Examination Results</h3>
-            <p className="text-sm text-gray-500 dark:text-gray-400 max-w-md mx-auto">
-              Select Academic Year, Exam and Class, then click <strong>View Results</strong> to see calculated results based on entered marks.
-            </p>
-          </div>
-        </div>
-      )}
+      {renderPreview()}
 
       <Modal
         isOpen={showViewModal}
-        onClose={() => { setShowViewModal(false); setViewStudent(null); }}
-        title="Result Details"
-        maxWidth="max-w-2xl"
+        onClose={() => { setShowViewModal(false); setViewResult(null); }}
+        title="Marksheet"
+        maxWidth="max-w-4xl"
       >
-        {viewStudent && (
-          <div className="space-y-5">
-            <div className="text-center pb-4 border-b border-gray-200 dark:border-gray-700">
-              <div className="mx-auto w-14 h-14 rounded-full bg-blue-50 dark:bg-blue-900/30 flex items-center justify-center mb-3">
-                <span className="text-sm font-bold text-blue-600 dark:text-blue-400 font-mono">{viewStudent.student.rollNumber}</span>
-              </div>
-              <h3 className="text-lg font-semibold text-gray-900 dark:text-white">{viewStudent.student.name}</h3>
-              <p className="text-xs text-gray-500 dark:text-gray-400 mt-1 font-mono">{viewStudent.student.id}</p>
-              <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium mt-2 ${
-                viewStudent.status === 'Passed'
-                  ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300'
-                  : viewStudent.status === 'Failed'
-                  ? 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300'
-                  : 'bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-300'
-              }`}>
-                {viewStudent.status}
-              </span>
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              <div className="p-3 rounded-lg bg-gray-50 dark:bg-gray-700/50">
-                <p className="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1">Exam</p>
-                <p className="text-sm font-semibold text-gray-900 dark:text-white">{displayExam?.name || '-'}</p>
-              </div>
-              <div className="p-3 rounded-lg bg-gray-50 dark:bg-gray-700/50">
-                <p className="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1">Academic Year</p>
-                <p className="text-sm font-semibold text-gray-900 dark:text-white">{academicYear}</p>
-              </div>
-              <div className="p-3 rounded-lg bg-gray-50 dark:bg-gray-700/50">
-                <p className="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1">Class</p>
-                <p className="text-sm font-semibold text-gray-900 dark:text-white">{className}</p>
-              </div>
-              <div className="p-3 rounded-lg bg-gray-50 dark:bg-gray-700/50">
-                <p className="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1">Roll Number</p>
-                <p className="text-sm font-semibold text-gray-900 dark:text-white">{viewStudent.student.rollNumber}</p>
-              </div>
-            </div>
-
-            <div>
-              <h4 className="text-sm font-semibold text-gray-900 dark:text-white mb-3">Subject-wise Results</h4>
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b border-gray-200 dark:border-gray-700">
-                      <th className="text-left px-3 py-2 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Subject</th>
-                      <th className="text-center px-3 py-2 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Total</th>
-                      <th className="text-center px-3 py-2 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Pass</th>
-                      <th className="text-center px-3 py-2 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Obtained</th>
-                      <th className="text-center px-3 py-2 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">%</th>
-                      <th className="text-center px-3 py-2 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Grade</th>
-                      <th className="text-center px-3 py-2 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Status</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {viewStudent.subjectResults.map((subj, idx) => (
-                      <tr key={idx} className="border-b border-gray-100 dark:border-gray-700/50">
-                        <td className="px-3 py-2.5">
-                          <span className="font-medium text-gray-900 dark:text-white">{subj.subjectName}</span>
-                          <span className="ml-1.5 text-xs text-gray-400 font-mono">{subj.subjectCode}</span>
-                        </td>
-                        <td className="px-3 py-2.5 text-center text-gray-700 dark:text-gray-300">{subj.totalMarks}</td>
-                        <td className="px-3 py-2.5 text-center text-gray-700 dark:text-gray-300">{subj.passingMarks}</td>
-                        <td className="px-3 py-2.5 text-center">
-                          {subj.entered ? (
-                            <span className="font-semibold text-gray-900 dark:text-white">{subj.obtainedMarks}</span>
-                          ) : (
-                            <span className="text-gray-400">—</span>
-                          )}
-                        </td>
-                        <td className="px-3 py-2.5 text-center">
-                          {subj.entered ? (
-                            <span className="text-gray-700 dark:text-gray-300">{subj.percentage}%</span>
-                          ) : (
-                            <span className="text-gray-400">—</span>
-                          )}
-                        </td>
-                        <td className="px-3 py-2.5 text-center">
-                          <span className={`inline-flex items-center justify-center w-8 h-8 rounded-md text-xs font-bold ${
-                            subj.grade === 'A+' ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300'
-                            : subj.grade === 'A' ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300'
-                            : subj.grade === 'B' ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300'
-                            : subj.grade === 'C' ? 'bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-300'
-                            : subj.grade === 'D' ? 'bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-300'
-                            : subj.grade === 'F' ? 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300'
-                            : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400'
-                          }`}>
-                            {subj.grade}
-                          </span>
-                        </td>
-                        <td className="px-3 py-2.5 text-center">
-                          {!subj.entered ? (
-                            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-300">Pending</span>
-                          ) : subj.passed ? (
-                            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300">Pass</span>
-                          ) : (
-                            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300">Fail</span>
-                          )}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-
-            <div className="bg-gray-50 dark:bg-gray-700/50 rounded-xl p-4">
-              <h4 className="text-sm font-semibold text-gray-900 dark:text-white mb-3">Overall Result</h4>
-              <div className="grid grid-cols-2 sm:grid-cols-5 gap-4">
-                <div>
-                  <p className="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1">Total Marks</p>
-                  <p className="text-lg font-bold text-gray-900 dark:text-white">{viewStudent.totalMarks}</p>
-                </div>
-                <div>
-                  <p className="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1">Obtained</p>
-                  <p className="text-lg font-bold text-gray-900 dark:text-white">{viewStudent.obtainedMarks !== null ? viewStudent.obtainedMarks : '—'}</p>
-                </div>
-                <div>
-                  <p className="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1">Percentage</p>
-                  <p className="text-lg font-bold text-gray-900 dark:text-white">{viewStudent.percentage !== null ? `${viewStudent.percentage}%` : '—'}</p>
-                </div>
-                <div>
-                  <p className="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1">Grade</p>
-                  <span className={`inline-flex items-center justify-center w-10 h-10 rounded-lg text-sm font-bold ${
-                    viewStudent.grade === 'A+' ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300'
-                    : viewStudent.grade === 'A' ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300'
-                    : viewStudent.grade === 'B' ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300'
-                    : viewStudent.grade === 'C' ? 'bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-300'
-                    : viewStudent.grade === 'D' ? 'bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-300'
-                    : viewStudent.grade === 'F' ? 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300'
-                    : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400'
-                  }`}>
-                    {viewStudent.grade}
-                  </span>
-                </div>
-                <div>
-                  <p className="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1">Status</p>
-                  <span className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium ${
-                    viewStudent.status === 'Passed'
-                      ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300'
-                      : viewStudent.status === 'Failed'
-                      ? 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300'
-                      : 'bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-300'
-                  }`}>
-                    {viewStudent.status}
-                  </span>
-                </div>
-              </div>
+        {viewResult && (
+          <div className="space-y-4">
+            {renderMarksheet(viewResult)}
+            <div className="flex flex-wrap items-center justify-end gap-3 pt-2 border-t border-gray-200 dark:border-gray-700">
+              <button
+                onClick={() => { setShowViewModal(false); setViewResult(null); }}
+                className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors cursor-pointer"
+              >
+                Close
+              </button>
+              <button
+                onClick={() => handlePrint(viewResult)}
+                disabled={printing}
+                className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium text-gray-700 dark:text-gray-200 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors cursor-pointer disabled:opacity-50"
+              >
+                {printing ? <Spinner size="xs" /> : <PrinterIcon className="h-4 w-4" />} Print
+              </button>
+              <button
+                onClick={() => handleExportPdf(viewResult)}
+                disabled={exporting}
+                className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium text-white bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 disabled:opacity-60 disabled:cursor-not-allowed transition-all cursor-pointer"
+              >
+                {exporting ? <Spinner size="xs" className="text-white" /> : <ArrowDownTrayIcon className="h-4 w-4" />} Download PDF
+              </button>
             </div>
           </div>
         )}

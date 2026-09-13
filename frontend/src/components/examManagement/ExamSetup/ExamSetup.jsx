@@ -85,7 +85,7 @@ const ExamSetup = () => {
       if (filterStatus) params.status = filterStatus;
 
       const result = await examService.getAllExams(params);
-      setData(result.data?.exams || []);
+      setData((result.data?.exams || []).filter((exam) => exam.type !== 'Monthly Test'));
       setPagination(result.data?.pagination || { totalExams: 0, totalPages: 0, currentPage: 1 });
     } catch (err) {
       const msg = err.response?.data?.message || 'Failed to load exams';
@@ -559,7 +559,7 @@ const ExamSetup = () => {
           <div className="space-y-5">
             <div className="text-center pb-4 border-b border-gray-200 dark:border-gray-700">
               <div className="mx-auto w-14 h-14 rounded-full bg-blue-50 dark:bg-blue-900/30 flex items-center justify-center mb-3">
-                <span className="text-lg font-bold text-blue-600 dark:text-blue-400">{viewItem.type === 'Monthly Test' ? 'MT' : viewItem.type === 'Mid Term' ? 'MT' : 'FT'}</span>
+                <span className="text-lg font-bold text-blue-600 dark:text-blue-400">{viewItem.type === 'Mid Term' ? 'MT' : 'FT'}</span>
               </div>
               <h3 className="text-lg font-semibold text-gray-900 dark:text-white">{viewItem.name}</h3>
               <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium mt-2 ${

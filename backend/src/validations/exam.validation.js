@@ -17,7 +17,7 @@ const VALID_CLASS_NAMES = [
   'Class 10',
 ];
 
-const EXAM_TYPES = ['Monthly Test', 'Mid Term', 'Final Term'];
+const EXAM_TYPES = ['Mid Term', 'Final Term'];
 
 const EXAM_STATUSES = ['Active', 'Inactive'];
 

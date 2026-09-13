@@ -1,6 +1,6 @@
 import api from '../../api/axios';
 
-export const EXAM_TYPES = ['Monthly Test', 'Mid Term', 'Final Term'];
+export const EXAM_TYPES = ['Mid Term', 'Final Term'];
 
 export const EXAM_STATUSES = ['Active', 'Inactive'];
 

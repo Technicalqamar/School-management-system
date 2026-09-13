@@ -48,6 +48,7 @@ import ExamSetupPage from './pages/admin/ExamManagement/ExamSetup';
 import SubjectMarksPage from './pages/admin/ExamManagement/SubjectMarks';
 import ExamSchedulePage from './pages/admin/ExamManagement/ExamSchedule';
 import MarksEntryPage from './pages/admin/ExamManagement/MarksEntry';
+import AdmitCardPage from './pages/admin/ExamManagement/AdmitCard';
 import ResultsPage from './pages/admin/ExamManagement/Results';
 import ResultHistoryPage from './pages/admin/ExamManagement/ResultHistory';
 import AllAccountsPage from './pages/admin/UserAccounts/AllAccounts';
@@ -123,6 +124,7 @@ function AppContent() {
             <Route path="exams/subjects-marks" element={<SubjectMarksPage />} />
             <Route path="exams/schedule" element={<ExamSchedulePage />} />
             <Route path="exams/marks-entry" element={<MarksEntryPage />} />
+            <Route path="exams/admit-card" element={<AdmitCardPage />} />
             <Route path="exams/results" element={<ResultsPage />} />
             <Route path="exams/result-history" element={<ResultHistoryPage />} />
             <Route path="accounts/all" element={<AllAccountsPage />} />
