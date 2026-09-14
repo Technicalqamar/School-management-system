@@ -19,6 +19,8 @@ import TeacherDashboard from './pages/teacher/TeacherDashboard';
 import TeacherMyClasses from './pages/teacher/MyClasses';
 import TeacherClassStudents from './pages/teacher/ClassStudents';
 import TeacherHomeworkAssignments from './pages/teacher/HomeworkAssignments';
+import TeacherMarksEntry from './pages/teacher/MarksEntry';
+import TeacherMyResults from './pages/teacher/MyResults';
 import StudentDashboard from './pages/student/StudentDashboard';
 import StudentHomework from './pages/student/StudentHomework';
 import StudentAssignmentDetail from './pages/student/StudentAssignmentDetail';
@@ -139,6 +141,8 @@ function AppContent() {
             <Route path="my-classes" element={<TeacherMyClasses />} />
             <Route path="my-classes/:classId" element={<TeacherClassStudents />} />
             <Route path="homework" element={<TeacherHomeworkAssignments />} />
+            <Route path="marks-entry" element={<TeacherMarksEntry />} />
+            <Route path="my-results" element={<TeacherMyResults />} />
           </Route>
         </Route>
 

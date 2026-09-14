@@ -3,6 +3,8 @@ const en = {
   dashboard: 'Dashboard',
   myClasses: 'My Classes',
   homeworkAssignments: 'Homework / Assignments',
+  marksEntry: 'Mark Entry',
+  myResults: 'My Results',
   dashboards: 'Dashboards',
   studentManagement: 'Student Management',
   teacherManagement: 'Teacher Management',

@@ -23,6 +23,7 @@ const getPublicSchoolSettings = asyncHandler(async (req, res) => {
       logo,
       adminPanelLogo,
       principalName: settings.principalName || '',
+      currentAcademicYear: settings.currentAcademicYear || '',
     },
   });
 });

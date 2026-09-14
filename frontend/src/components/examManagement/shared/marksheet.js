@@ -44,7 +44,15 @@ export const buildMarksheetHtml = (record, schoolInfo = {}) => {
   if (!record) return '';
   const addressParts = [schoolInfo.address, schoolInfo.city, schoolInfo.province].filter(Boolean).join(', ');
   const schoolAddress = [addressParts, schoolInfo.country].filter(Boolean).join(', ');
-  const contactLine = [schoolInfo.contact, schoolInfo.email, schoolInfo.website].filter(Boolean).join('  •  ');
+  const schoolContactLine = [
+    schoolInfo.contact ? `Ph: ${schoolInfo.contact}` : '',
+    schoolInfo.email ? `Email: ${schoolInfo.email}` : '',
+    schoolInfo.website ? `Web: ${schoolInfo.website}` : '',
+  ].filter(Boolean).join(' &nbsp;|&nbsp; ');
+  const schoolRegLine = [
+    schoolInfo.registrationNumber ? `Reg. No: ${schoolInfo.registrationNumber}` : '',
+    schoolInfo.principalName ? `Principal: ${schoolInfo.principalName}` : '',
+  ].filter(Boolean).join(' &nbsp;|&nbsp; ');
   const photoUrl = getImageUrl(record.student.studentImage);
   const generatedOn = new Date().toLocaleString();
 
@@ -52,12 +60,15 @@ export const buildMarksheetHtml = (record, schoolInfo = {}) => {
     .map((subj) => {
       const statusText = !subj.entered ? 'Pending' : subj.passed ? 'Pass' : 'Fail';
       const statusCls = !subj.entered ? 'status-pending' : subj.passed ? 'status-pass' : 'status-fail';
+      const gradeCell = subj.entered
+        ? `<span class="badge grade-${subj.grade.replace('+', 'P')}">${subj.grade}</span>`
+        : '<span style="color:#9ca3af;">—</span>';
       return `<tr>
-        <td style="font-weight:600;">${subj.subjectName}</td>
+        <td style="text-align:left;font-weight:600;">${subj.subjectName}</td>
         <td>${subj.totalMarks}</td>
-        <td>${subj.entered ? subj.obtainedMarks : '-'}</td>
-        <td>${subj.entered ? `${subj.percentage}%` : '-'}</td>
-        <td>${subj.entered ? `<span class="badge grade-${subj.grade.replace('+', 'P')}">${subj.grade}</span>` : '-'}</td>
+        <td>${subj.entered ? subj.obtainedMarks : '<span style="color:#9ca3af;">—</span>'}</td>
+        <td>${subj.entered ? `${subj.percentage}%` : '<span style="color:#9ca3af;">—</span>'}</td>
+        <td>${gradeCell}</td>
         <td><span class="${statusCls}">${statusText}</span></td>
       </tr>`;
     })
@@ -65,7 +76,7 @@ export const buildMarksheetHtml = (record, schoolInfo = {}) => {
 
   const overallStatus = record.status || 'Pending';
   const overallStatusClass =
-    overallStatus === 'Passed' ? 'val green' : overallStatus === 'Failed' ? 'val red' : 'val';
+    overallStatus === 'Passed' ? 'val-green' : overallStatus === 'Failed' ? 'val-red' : 'val-amber';
 
   return `<!DOCTYPE html>
 <html>
@@ -73,123 +84,225 @@ export const buildMarksheetHtml = (record, schoolInfo = {}) => {
   <meta charset="UTF-8">
   <title>Marksheet - ${record.student.studentId}</title>
   <style>
-    @page { size: A4 portrait; margin: 12mm; }
+    @page { size: A4 portrait; margin: 10mm; }
     * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { font-family: 'Segoe UI', Arial, sans-serif; -webkit-print-color-adjust: exact; print-color-adjust: exact; color: #1f2937; background: #fff; font-size: 11px; }
-    .rpt-hdr { background: linear-gradient(135deg, #1e3a5f, #1e40af); padding: 18px 24px; border-radius: 6px 6px 0 0; color: #fff; display: flex; justify-content: space-between; align-items: center; }
-    .rpt-hdr h1 { font-size: 18px; font-weight: 700; letter-spacing: 0.3px; }
-    .rpt-hdr p { font-size: 11px; color: rgba(255,255,255,0.75); margin-top: 2px; }
-    .rpt-hdr .logo { max-height: 52px; max-width: 52px; border-radius: 8px; background: #fff; padding: 3px; }
-    .rpt-hdr .date { text-align: right; }
-    .rpt-hdr .date p { font-size: 10px; }
-    .rpt-hdr .date p:last-child { color: #fff; font-weight: 600; font-size: 11px; }
-    .rpt-body { padding: 16px 24px; border: 1px solid #e5e7eb; border-top: none; border-radius: 0 0 6px 6px; }
-    .rpt-title { text-align: center; margin-bottom: 14px; }
-    .rpt-title h2 { font-size: 16px; color: #1e40af; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; }
-    .rpt-title p { font-size: 10px; color: #6b7280; margin-top: 2px; font-weight: 600; }
-    .student-grid { display: flex; gap: 18px; align-items: center; margin-bottom: 14px; }
-    .student-photo { width: 84px; height: 92px; border: 1px solid #e5e7eb; border-radius: 6px; overflow: hidden; flex-shrink: 0; display: flex; align-items: center; justify-content: center; background: #f9fafb; }
-    .student-photo img { width: 100%; height: 100%; object-fit: cover; }
-    .student-photo .fallback { font-size: 22px; font-weight: 700; color: #9ca3af; }
-    .info-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; flex: 1; }
-    .info-card { background: #f3f4f6; padding: 8px 10px; border-radius: 4px; }
-    .info-card .lbl { font-size: 9px; color: #6b7280; text-transform: uppercase; letter-spacing: 0.5px; font-weight: 600; }
-    .info-card .val { font-size: 11px; font-weight: 700; color: #111827; margin-top: 2px; }
-    .sec-title { font-size: 13px; font-weight: 700; color: #1e40af; margin: 16px 0 8px; padding-bottom: 4px; border-bottom: 2px solid #1e40af; }
-    table { width: 100%; border-collapse: collapse; font-size: 10px; margin-bottom: 12px; }
-    thead th { background: #1e40af; color: #fff; padding: 7px 8px; text-align: center; font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; }
-    thead th:first-child { text-align: left; }
-    tbody td { padding: 6px 8px; border-bottom: 1px solid #e5e7eb; text-align: center; }
-    tbody td:first-child { text-align: left; }
-    tbody tr:nth-child(even) { background: #f9fafb; }
-    .badge { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 9px; font-weight: 700; }
+    html, body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    body { font-family: 'Segoe UI', 'Arial', sans-serif; color: #1f2937; background: #f9fafb; font-size: 11px; line-height: 1.4; }
+    .sheet { width: 210mm; min-height: 297mm; margin: 0 auto; background: #fff; padding: 9mm 11mm; }
+    .frame { border: 2.5px solid #1e3a5f; border-radius: 10px; padding: 5px; }
+    .frame-inner { border: 1.4px solid #1e40af; border-radius: 6px; overflow: hidden; }
+
+    /* ── 1. Top Header ─────────────────────────────── */
+    .hdr { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 13px 16px 9px; background: linear-gradient(135deg, #f8fafc, #eef2ff); border-bottom: 2px solid #1e3a5f; }
+    .hdr-logo { width: 70px; height: 70px; flex-shrink: 0; border: 1.6px solid #1e3a5f; border-radius: 50%; overflow: hidden; display: flex; align-items: center; justify-content: center; background: #fff; }
+    .hdr-logo img { width: 100%; height: 100%; object-fit: cover; }
+    .hdr-logo .fallback { font-size: 22px; font-weight: 800; color: #1e3a5f; }
+    .hdr-main { flex: 1; text-align: center; }
+    .hdr-main h1 { font-size: 21px; font-weight: 800; color: #1e3a5f; text-transform: uppercase; letter-spacing: 1.1px; }
+    .hdr-main .est { font-size: 9.5px; color: #6b7280; margin-top: 1px; }
+    .hdr-main .motto { font-size: 10.5px; color: #475569; font-style: italic; margin-top: 1px; }
+    .hdr-side { text-align: right; flex-shrink: 0; }
+    .hdr-side p { font-size: 8.5px; color: #6b7280; }
+    .hdr-side .gen { font-size: 8px; color: #94a3b8; }
+    .hdr-meta { padding: 5px 16px; background: #0f2a52; color: #fff; text-align: center; font-size: 9px; letter-spacing: 0.4px; }
+    .hdr-meta span { margin: 0 9px; }
+
+    /* ── Title bar ─────────────────────────────────── */
+    .title-bar { text-align: center; padding: 9px 16px 7px; }
+    .title-bar h2 { font-size: 16px; font-weight: 800; color: #1e3a5f; text-transform: uppercase; letter-spacing: 1.6px; }
+    .title-bar p { font-size: 10px; color: #475569; margin-top: 2px; font-weight: 600; }
+    .title-bar .acad { display: inline-block; margin-top: 3px; padding: 1px 10px; border: 0.8px solid #1e40af; border-radius: 12px; color: #1e40af; font-size: 9px; font-weight: 700; background: #eef2ff; }
+
+    /* ── 2. Student Information ────────────────────── */
+    .sec { margin: 0 16px 8px; }
+    .sec-title { display: flex; align-items: center; gap: 8px; margin: 3px 0 6px; }
+    .sec-title .cap { font-size: 11px; font-weight: 800; color: #1e3a5f; text-transform: uppercase; letter-spacing: 0.8px; }
+    .sec-title .rule { flex: 1; height: 1.6px; background: #1e40af; }
+    .student-row { display: flex; gap: 14px; }
+    .photo-box { width: 86px; height: 100px; flex-shrink: 0; border: 1.4px solid #1e3a5f; border-radius: 6px; overflow: hidden; background: #f1f5f9; display: flex; align-items: center; justify-content: center; }
+    .photo-box img { width: 100%; height: 100%; object-fit: cover; }
+    .photo-box .fallback { font-size: 24px; font-weight: 800; color: #94a3b8; }
+    .info-table { flex: 1; width: 100%; border-collapse: collapse; }
+    .info-table td { border: 0.8px solid #cbd5e1; padding: 4px 7px; font-size: 10.5px; }
+    .info-table .lbl { width: 118px; background: #eef2ff; color: #334155; font-weight: 700; text-transform: uppercase; letter-spacing: 0.3px; font-size: 8.5px; }
+    .info-table .val { color: #111827; font-weight: 600; }
+
+    /* ── 3. Marks table ────────────────────────────── */
+    .marks-table { width: 100%; border-collapse: collapse; }
+    .marks-table thead th { background: linear-gradient(135deg, #1e3a5f, #1e40af); color: #fff; padding: 6px 7px; text-align: center; font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; border: 0.8px solid #16294a; }
+    .marks-table thead th:first-child { text-align: left; }
+    .marks-table tbody td { padding: 5px 7px; border: 0.8px solid #cbd5e1; text-align: center; font-size: 10.5px; }
+    .marks-table tbody td:first-child { text-align: left; }
+    .marks-table tbody tr:nth-child(even) { background: #f8fafc; }
+    .marks-table tbody tr:nth-child(odd) { background: #fff; }
+    .badge { display: inline-block; min-width: 24px; padding: 1px 7px; border-radius: 9px; font-size: 9px; font-weight: 700; }
     .grade-AP { background: #d1fae5; color: #065f46; }
     .grade-A { background: #bbf7d0; color: #166534; }
     .grade-B { background: #dbeafe; color: #1e40af; }
     .grade-C { background: #fef9c3; color: #854d0e; }
     .grade-D { background: #ffedd5; color: #c2410c; }
     .grade-F { background: #fee2e2; color: #991b1b; }
-    .status-pass { background: #dcfce7; color: #166534; padding: 2px 8px; border-radius: 10px; font-size: 9px; font-weight: 600; }
-    .status-fail { background: #fee2e2; color: #991b1b; padding: 2px 8px; border-radius: 10px; font-size: 9px; font-weight: 600; }
-    .status-pending { background: #fef9c3; color: #854d0e; padding: 2px 8px; border-radius: 10px; font-size: 9px; font-weight: 600; }
-    .summary-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; margin-bottom: 14px; }
-    .summary-card { background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 4px; padding: 10px; text-align: center; }
-    .summary-card .lbl { font-size: 9px; color: #6b7280; text-transform: uppercase; font-weight: 600; }
-    .summary-card .val { font-size: 14px; font-weight: 700; color: #111827; margin-top: 2px; }
-    .val.green { color: #16a34a; }
-    .val.red { color: #dc2626; }
-    .val.blue { color: #2563eb; }
-    .signatures { display: flex; justify-content: space-between; margin-top: 44px; padding-top: 8px; }
-    .signature { text-align: center; font-size: 11px; color: #374151; width: 30%; }
-    .signature .line { border-top: 1px solid #374151; padding-top: 6px; font-weight: 600; }
-    .ftr { border-top: 1px solid #e5e7eb; margin-top: 16px; padding-top: 8px; display: flex; justify-content: space-between; font-size: 8px; color: #9ca3af; }
-    @media print { body { margin: 0; padding: 0; } .rpt-body { border: none; } }
+    .status-pass { background: #dcfce7; color: #166534; padding: 1px 8px; border-radius: 9px; font-size: 9px; font-weight: 700; }
+    .status-fail { background: #fee2e2; color: #991b1b; padding: 1px 8px; border-radius: 9px; font-size: 9px; font-weight: 700; }
+    .status-pending { background: #fef9c3; color: #854d0e; padding: 1px 8px; border-radius: 9px; font-size: 9px; font-weight: 700; }
+
+    /* ── 4. Overall Result ─────────────────────────── */
+    .overall-grid { display: flex; border: 1px solid #cbd5e1; border-radius: 6px; overflow: hidden; }
+    .overall-item { flex: 1; padding: 8px 6px; text-align: center; border-right: 1px solid #cbd5e1; background: #fff; }
+    .overall-item:last-child { border-right: none; }
+    .overall-item .lbl { font-size: 8px; color: #64748b; text-transform: uppercase; letter-spacing: 0.4px; font-weight: 700; }
+    .overall-item .val { font-size: 13px; font-weight: 800; color: #111827; margin-top: 2px; }
+    .overall-item .val.blue { color: #2563eb; }
+    .overall-item .val.green { color: #16a34a; }
+    .overall-item .val.red { color: #dc2626; }
+    .overall-item .val.amber { color: #b45309; }
+    .val-green { color: #16a34a; }
+    .val-red { color: #dc2626; }
+    .val-amber { color: #b45309; }
+
+    /* ── 5. Signature area ─────────────────────────── */
+    .signatures { display: flex; justify-content: space-between; margin: 34px 16px 0; }
+    .signature-box { width: 34%; text-align: center; }
+    .signature-box .sig-space { height: 42px; }
+    .signature-box .sig-line { border-top: 1.2px solid #1f2937; padding-top: 4px; font-size: 9.5px; font-weight: 700; color: #374151; text-transform: uppercase; letter-spacing: 0.5px; }
+    .signature-box .sig-role { font-size: 8.5px; color: #6b7280; margin-top: 1px; }
+
+    /* ── Footer ────────────────────────────────────── */
+    .ftr { margin-top: 10px; padding: 5px 16px 0; border-top: 1px solid #cbd5e1; display: flex; justify-content: space-between; font-size: 7.5px; color: #94a3b8; }
+
+    @media print {
+      body { background: #fff; }
+      .sheet { margin: 0; width: auto; min-height: auto; padding: 0; }
+      .frame, .frame-inner { border-radius: 0; }
+    }
   </style>
 </head>
 <body>
-  <div class="rpt-hdr">
-    <div>
-      ${schoolInfo.logo ? `<img class="logo" src="${getImageUrl(schoolInfo.logo)}" alt="Logo" />` : ''}
-    </div>
-    <div>
-      <h1>${schoolInfo.name || 'School Name'}</h1>
-      <p>${[schoolAddress, schoolInfo.registrationNumber ? `Reg. No: ${schoolInfo.registrationNumber}` : ''].filter(Boolean).join('  •  ')}</p>
-      ${contactLine ? `<p>${contactLine}</p>` : ''}
-    </div>
-    <div class="date">
-      <p>Generated On</p>
-      <p>${generatedOn}</p>
-    </div>
-  </div>
-  <div class="rpt-body">
-    <div class="rpt-title">
-      <h2>Examination Marksheet</h2>
-      <p>${record.exam?.name || 'Exam'} (${record.exam?.type || ''}) &mdash; Academic Year ${record.academicYear}</p>
-    </div>
-    <div>
-      <div class="sec-title">Student Information</div>
-      <div class="student-grid">
-        <div class="student-photo">
-          ${photoUrl ? `<img src="${photoUrl}" alt="Student photo" />` : `<span class="fallback">${getInitials(record.student.fullName)}</span>`}
+  <div class="sheet">
+    <div class="frame">
+      <div class="frame-inner">
+        <!-- 1. Top Header -->
+        <div class="hdr">
+          <div class="hdr-logo">
+            ${schoolInfo.logo ? `<img src="${getImageUrl(schoolInfo.logo)}" alt="School Logo" />` : `<span class="fallback">${getInitials(schoolInfo.name || 'School')}</span>`}
+          </div>
+          <div class="hdr-main">
+            <h1>${schoolInfo.name || 'School Name'}</h1>
+            ${schoolAddress ? `<p class="est">${schoolAddress}</p>` : ''}
+            ${schoolInfo.shortName ? `<p class="motto">"${schoolInfo.shortName}"</p>` : ''}
+          </div>
+          <div class="hdr-side">
+            ${schoolRegLine ? `<p>${schoolRegLine}</p>` : ''}
+            <p class="gen">Generated: ${generatedOn}</p>
+          </div>
         </div>
-        <div class="info-grid">
-          <div class="info-card"><div class="lbl">Student ID</div><div class="val">${record.student.studentId}</div></div>
-          <div class="info-card"><div class="lbl">Student Name</div><div class="val">${record.student.fullName}</div></div>
-          <div class="info-card"><div class="lbl">Father's Name</div><div class="val">${record.student.fatherName || '-'}</div></div>
-          <div class="info-card"><div class="lbl">Class</div><div class="val">${record.className}</div></div>
-          <div class="info-card"><div class="lbl">Academic Year</div><div class="val">${record.academicYear}</div></div>
-          <div class="info-card"><div class="lbl">Exam Term</div><div class="val">${record.exam?.type || record.exam?.name || '-'}</div></div>
+        <div class="hdr-meta">
+          ${schoolContactLine ? `<span>${schoolContactLine}</span>` : ''}
+        </div>
+
+        <!-- Exam/Result Title -->
+        <div class="title-bar">
+          <h2>Examination Marksheet</h2>
+          <p>${record.exam?.name || 'Exam'} ${record.exam?.type ? `(${record.exam.type})` : ''}</p>
+          <span class="acad">Academic Year ${record.academicYear}</span>
+        </div>
+
+        <!-- 2. Student Information -->
+        <div class="sec">
+          <div class="sec-title">
+            <span class="cap">Student Information</span>
+            <span class="rule"></span>
+          </div>
+          <div class="student-row">
+            <div class="photo-box">
+              ${photoUrl ? `<img src="${photoUrl}" alt="Student photo" />` : `<span class="fallback">${getInitials(record.student.fullName)}</span>`}
+            </div>
+            <table class="info-table">
+              <tbody>
+                <tr>
+                  <td class="lbl">Student Name</td><td class="val">${record.student.fullName}</td>
+                  <td class="lbl">Class</td><td class="val">${record.className}</td>
+                </tr>
+                <tr>
+                  <td class="lbl">Father Name</td><td class="val">${record.student.fatherName || '-'}</td>
+                  <td class="lbl">Academic Year</td><td class="val">${record.academicYear}</td>
+                </tr>
+                <tr>
+                  <td class="lbl">Student ID</td><td class="val">${record.student.studentId}</td>
+                  <td class="lbl">Exam Term</td><td class="val">${record.exam?.type || record.exam?.name || '-'}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- 3. Marks Table -->
+        <div class="sec">
+          <div class="sec-title">
+            <span class="cap">Marks / Results</span>
+            <span class="rule"></span>
+          </div>
+          <table class="marks-table">
+            <thead>
+              <tr>
+                <th>Subject</th><th>Total Marks</th><th>Obtained Marks</th><th>Percentage</th><th>Grade</th><th>Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${subjectRows}
+            </tbody>
+          </table>
+        </div>
+
+        <!-- 4. Overall Result -->
+        <div class="sec">
+          <div class="sec-title">
+            <span class="cap">Overall Result</span>
+            <span class="rule"></span>
+          </div>
+          <div class="overall-grid">
+            <div class="overall-item">
+              <div class="lbl">Total Marks</div>
+              <div class="val">${record.totalMarks}</div>
+            </div>
+            <div class="overall-item">
+              <div class="lbl">Obtained Marks</div>
+              <div class="val blue">${record.obtainedMarks !== null ? record.obtainedMarks : '—'}</div>
+            </div>
+            <div class="overall-item">
+              <div class="lbl">Overall Percentage</div>
+              <div class="val blue">${record.percentage !== null ? `${record.percentage}%` : '—'}</div>
+            </div>
+            <div class="overall-item">
+              <div class="lbl">Overall Grade</div>
+              <div class="val">${record.grade}</div>
+            </div>
+            <div class="overall-item">
+              <div class="lbl">Result Status</div>
+              <div class="val ${overallStatusClass}">${overallStatus}</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 5. Signature Area -->
+        <div class="signatures">
+          <div class="signature-box">
+            <div class="sig-space"></div>
+            <div class="sig-line">Class Teacher</div>
+            <div class="sig-role">Signature</div>
+          </div>
+          <div class="signature-box">
+            <div class="sig-space"></div>
+            <div class="sig-line">Principal</div>
+            <div class="sig-role">Signature</div>
+          </div>
+        </div>
+
+        <div class="ftr">
+          <span>${schoolInfo.name || 'School'} &mdash; Examination Marksheet</span>
+          <span>Page 1 of 1</span>
         </div>
       </div>
-    </div>
-    <div>
-      <div class="sec-title">Marksheet</div>
-      <table>
-        <thead>
-          <tr>
-            <th>Subject</th><th>Total Marks</th><th>Obtained Marks</th><th>Percentage</th><th>Grade</th><th>Status</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${subjectRows}
-        </tbody>
-      </table>
-    </div>
-    <div class="summary-grid">
-      <div class="summary-card"><div class="lbl">Total Marks</div><div class="val">${record.totalMarks}</div></div>
-      <div class="summary-card"><div class="lbl">Obtained Marks</div><div class="val blue">${record.obtainedMarks !== null ? record.obtainedMarks : '-'}</div></div>
-      <div class="summary-card"><div class="lbl">Overall Percentage</div><div class="val blue">${record.percentage !== null ? `${record.percentage}%` : '-'}</div></div>
-      <div class="summary-card"><div class="lbl">Overall Grade</div><div class="val">${record.grade}</div></div>
-      <div class="summary-card"><div class="lbl">Pass / Fail</div><div class="${overallStatusClass}">${overallStatus}</div></div>
-    </div>
-    <div class="signatures">
-      <div class="signature"><div class="line">Class Teacher</div></div>
-      <div class="signature"><div class="line">Exam Controller</div></div>
-      <div class="signature"><div class="line">Principal</div></div>
-    </div>
-    <div class="ftr">
-      <span>${schoolInfo.name || 'School'} &mdash; Examination Marksheet</span>
-      <span>Page 1 of 1</span>
     </div>
   </div>
 </body>

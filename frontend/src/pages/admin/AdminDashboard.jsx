@@ -56,13 +56,13 @@ const FeeMetricTile = ({ label, value, color }) => {
   };
 
   return (
-    <div className="rounded-xl border border-gray-200 dark:border-gray-700 p-4">
-      <p className="text-xs font-medium text-gray-500 dark:text-gray-400">{label}</p>
-      <div className="mt-2 flex items-center gap-2">
-        <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold ${badgeColors[color]}`}>
+    <div className="rounded-xl border border-gray-200 dark:border-gray-700 p-4 min-w-0">
+      <p className="text-xs font-medium text-gray-500 dark:text-gray-400 break-words leading-snug">{label}</p>
+      <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 min-w-0">
+        <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold whitespace-nowrap flex-shrink-0 ${badgeColors[color]}`}>
           {color === 'blue' ? 'Expected' : color === 'green' ? 'Collected' : 'Outstanding'}
         </span>
-        <p className="text-xl font-bold text-gray-900 dark:text-white">{value}</p>
+        <p className="text-xl font-bold text-gray-900 dark:text-white break-words min-w-0">{value}</p>
       </div>
     </div>
   );
@@ -187,14 +187,14 @@ const AdminDashboard = () => {
                   </PieChart>
                 </ResponsiveContainer>
               </div>
-              <div className="mt-4 flex items-center justify-center gap-6 text-xs text-gray-600 dark:text-gray-300">
+              <div className="mt-4 flex flex-wrap items-center justify-center gap-x-6 gap-y-2 text-xs text-gray-600 dark:text-gray-300">
                 <span className="inline-flex items-center gap-2">
-                  <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: '#22c55e' }} />
+                  <span className="h-2.5 w-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: '#22c55e' }} />
                   Active Students
                   <span className="font-semibold text-gray-900 dark:text-white">{formatCount(studentOverview.active)}</span>
                 </span>
                 <span className="inline-flex items-center gap-2">
-                  <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: '#ef4444' }} />
+                  <span className="h-2.5 w-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: '#ef4444' }} />
                   Inactive Students
                   <span className="font-semibold text-gray-900 dark:text-white">{formatCount(studentOverview.inactive)}</span>
                 </span>

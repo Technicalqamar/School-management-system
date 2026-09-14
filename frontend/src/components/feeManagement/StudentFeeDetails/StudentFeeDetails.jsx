@@ -455,7 +455,7 @@ const StudentFeeDetails = () => {
                   <button
                     key={s._id}
                     type="button"
-                    onClick={() => selectSearchResult(s)}
+                    onMouseDown={() => selectSearchResult(s)}
                     className="w-full flex items-center gap-3 px-3 py-2.5 text-left hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors cursor-pointer"
                   >
                     <div className="w-9 h-9 rounded-full bg-gradient-to-br from-blue-600 to-blue-800 flex items-center justify-center text-white font-bold text-xs flex-shrink-0">

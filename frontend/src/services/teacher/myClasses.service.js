@@ -8,25 +8,16 @@ import api from '../../api/axios';
  */
 
 const flattenClasses = (classes) =>
-  (classes || []).flatMap((cls) =>
-    (cls.subjects || []).length > 0
-      ? cls.subjects.map((subject) => ({
-          classId: cls.classId,
-          className: cls.className,
-          subject: subject.subjectName,
-          subjectCode: subject.subjectCode || '',
-          totalStudents: cls.totalStudents || 0,
-        }))
-      : [
-          {
-            classId: cls.classId,
-            className: cls.className,
-            subject: '',
-            subjectCode: '',
-            totalStudents: cls.totalStudents || 0,
-          },
-        ],
-  );
+  (classes || []).map((cls) => {
+    const subjectNames = (cls.subjects || []).map((s) => s.subjectName).filter(Boolean);
+    return {
+      classId: cls.classId,
+      className: cls.className,
+      subject: subjectNames.join(', '),
+      subjectCode: (cls.subjects || []).map((s) => s.subjectCode).filter(Boolean).join(', '),
+      totalStudents: cls.totalStudents || 0,
+    };
+  });
 
 const getMyClasses = async () => {
   const response = await api.get('/teacher/my-classes');

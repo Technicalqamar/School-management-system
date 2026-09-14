@@ -95,6 +95,7 @@ export const SchoolConfigProvider = ({ children }) => {
           ...prev,
           schoolInfo: { ...prev.schoolInfo, name: pub.schoolName || '', logo: pub.logo || null, principalName: pub.principalName || '' },
           branding: { ...prev.branding, adminLogo: pub.adminPanelLogo || null },
+          academic: { ...prev.academic, currentYear: pub.currentAcademicYear || '' },
           loading: false,
           loaded: true,
         }));
