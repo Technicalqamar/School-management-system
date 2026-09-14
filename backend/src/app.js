@@ -106,6 +106,7 @@ app.use('/api/v1/teacher/my-classes', teacherClassStudentsRoutes);
 app.use('/api/v1/teacher/homework', teacherHomeworkRoutes);
 app.use('/api/v1/teacher/marks-entry', teacherMarksEntryRoutes);
 app.use('/api/v1/teacher/my-results', teacherMyResultsRoutes);
+app.use('/api/v1/student/dashboard', studentDashboardRoutes);
 app.use('/api/v1/student/homework', studentHomeworkRoutes);
 app.use('/api/v1/student/fees', studentFeesRoutes);
 app.use('/api/v1/portal', portalRoutes);

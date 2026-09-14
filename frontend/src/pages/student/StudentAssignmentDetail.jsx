@@ -11,6 +11,7 @@ import CardSection from '../../components/common/CardSection/CardSection';
 import Spinner from '../../components/common/Spinner/Spinner';
 import studentHomeworkService from '../../services/student/studentHomework.service';
 import { useTranslation } from '../../hooks/useLocalization';
+import { usePortal } from '../../contexts/PortalContext';
 
 const statusBadgeCls = (status) => {
   const map = {
@@ -40,6 +41,8 @@ const StudentAssignmentDetail = () => {
   const { t } = useTranslation();
   const { id } = useParams();
   const { state } = useLocation();
+  const portal = usePortal();
+  const homeworkBase = portal?.isPortalAccess ? '/portal/access/homework' : '/student/dashboard/homework';
 
   const [assignment, setAssignment] = useState(state?.assignment || null);
   const [isLoading, setIsLoading] = useState(!state?.assignment && Boolean(id));
@@ -81,7 +84,7 @@ const StudentAssignmentDetail = () => {
           <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">{t('homeworkSubtitle')}</p>
         </div>
         <Link
-          to="/student/dashboard/homework"
+          to={homeworkBase}
           className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-3 py-2 text-xs font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
         >
           <ArrowLeftIcon className="h-4 w-4" />
@@ -105,7 +108,7 @@ const StudentAssignmentDetail = () => {
             <p className="text-sm font-medium text-gray-500 dark:text-gray-400">{t('assignmentUnavailableTitle')}</p>
             <p className="text-xs text-gray-400 dark:text-gray-500 max-w-sm">{t('assignmentUnavailableDescription')}</p>
             <Link
-              to="/student/dashboard/homework"
+              to={homeworkBase}
               className="mt-3 inline-flex items-center gap-1.5 rounded-lg bg-blue-600 px-4 py-2 text-xs font-medium text-white hover:bg-blue-700 transition-colors"
             >
               <ArrowLeftIcon className="h-3.5 w-3.5" />
@@ -120,7 +123,7 @@ const StudentAssignmentDetail = () => {
           <div className="flex flex-col items-center justify-center gap-3 py-10 text-center">
             <p className="text-sm font-medium text-red-600 dark:text-red-400">{error}</p>
             <Link
-              to="/student/dashboard/homework"
+              to={homeworkBase}
               className="inline-flex items-center gap-1.5 rounded-lg bg-blue-600 px-4 py-2 text-xs font-medium text-white hover:bg-blue-700 transition-colors"
             >
               <ArrowLeftIcon className="h-3.5 w-3.5" />

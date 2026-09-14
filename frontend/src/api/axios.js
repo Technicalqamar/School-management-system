@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { getPortalAccessToken } from './portalSession';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000/api/v1';
 
@@ -12,7 +13,7 @@ const api = axios.create({
 // Request Interceptor: Attach Token + Handle FormData
 api.interceptors.request.use(
   (config) => {
-    const accessToken = localStorage.getItem('accessToken');
+    const accessToken = getPortalAccessToken() || localStorage.getItem('accessToken');
     if (accessToken) {
       config.headers.Authorization = `Bearer ${accessToken}`;
     }
@@ -30,9 +31,12 @@ api.interceptors.response.use(
   async (error) => {
     const originalRequest = error.config;
 
-    // Skip refresh logic for login requests (public endpoints)
+    // Skip refresh logic for login requests (public endpoints) and for Admin
+    // Portal Access sessions (the portal token has no refresh token, and the
+    // shared admin credentials in localStorage must not be rotated from here).
     const isLoginRequest = originalRequest?.url?.includes('/login');
-    if (error.response?.status === 401 && !originalRequest._retry && !isLoginRequest) {
+    const isPortalSession = Boolean(getPortalAccessToken());
+    if (error.response?.status === 401 && !originalRequest._retry && !isLoginRequest && !isPortalSession) {
       originalRequest._retry = true;
 
       try {

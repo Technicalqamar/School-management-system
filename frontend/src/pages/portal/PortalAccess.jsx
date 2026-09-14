@@ -1,10 +1,13 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { Outlet } from 'react-router-dom';
 import FullPageLoader from '../../components/common/FullPageLoader/FullPageLoader';
 import Button from '../../components/common/Button/Button';
 import portalService from '../../services/portal/portal.service';
-import StudentDashboard from '../student/StudentDashboard';
+import StudentLayout from '../../layouts/StudentLayout';
+import { PortalProvider } from '../../contexts/PortalContext';
+import { setPortalAccessToken, clearPortalAccessToken } from '../../api/portalSession';
 import { useTranslation } from '../../hooks/useLocalization';
-import { ShieldCheckIcon, ArrowLeftOnRectangleIcon, LockClosedIcon, CheckCircleIcon } from '@heroicons/react/24/outline';
+import { LockClosedIcon, CheckCircleIcon } from '@heroicons/react/24/outline';
 
 const READY_TIMEOUT_MS = 20000;
 
@@ -28,6 +31,7 @@ const PortalAccess = () => {
 
     try {
       const res = await portalService.getPortalContext(accessToken);
+      setPortalAccessToken(accessToken);
       setContext(res.data);
       setStatus('ready');
     } catch {
@@ -76,6 +80,19 @@ const PortalAccess = () => {
     }
   }, []);
 
+  const returnToAdminPanel = useCallback(() => {
+    try {
+      if (window.opener && !window.opener.closed) {
+        window.opener.focus();
+        window.opener.location.href = '/admin/students';
+        return;
+      }
+    } catch {
+      // Opener may be blocked for cross-origin access; fall back to local navigation.
+    }
+    window.location.replace('/admin/students');
+  }, []);
+
   const handleExitPortal = async () => {
     if (exitLoading || status === 'ended') return;
     setExitLoading(true);
@@ -88,7 +105,10 @@ const PortalAccess = () => {
     } catch {
       // Even if the remote access already ended or expired, proceed with local cleanup.
     } finally {
-      // 2. Clear the temporary portal access context only.
+      // 2. Clear the temporary portal access context AND the per-tab portal
+      //    token, so the shared admin credentials in localStorage are left
+      //    fully untouched.
+      clearPortalAccessToken();
       setToken(null);
       setContext(null);
 
@@ -97,8 +117,11 @@ const PortalAccess = () => {
       setStatus('ended');
       setExitLoading(false);
 
-      // 4. Close only the current Student Portal tab. The original Admin Panel
-      //    tab (window.opener) is left untouched.
+      // 4. Return the admin to the Admin Panel (Student Management).
+      returnToAdminPanel();
+
+      // 5. Close only the current Student Portal tab. The original Admin Panel
+      //    tab (window.opener) is left untouched and stays logged in.
       closePortalTab();
     }
   };
@@ -108,34 +131,26 @@ const PortalAccess = () => {
       id: context.student.id,
       fullName: context.student.fullName,
       studentId: context.student.studentId,
+      role: 'student',
+      student: context.student,
+      profile: context.student,
     };
 
     return (
-      <div className="min-h-screen bg-gray-100 dark:bg-gray-950">
-        <div className="bg-indigo-600 text-white">
-          <div className="max-w-7xl mx-auto px-6 py-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-            <div className="flex items-center gap-2.5">
-              <ShieldCheckIcon className="h-5 w-5 shrink-0" />
-              <div>
-                <p className="text-sm font-semibold leading-tight">{t('viewingStudentPortal')}</p>
-                <p className="text-xs text-indigo-100">
-                  {t('accessedBy')}: {context.admin?.fullName || t('administrator')} · {t('adminAuthorizedAccess')}
-                </p>
-              </div>
-            </div>
-            <Button
-              variant="secondary"
-              onClick={handleExitPortal}
-              loading={exitLoading}
-              className="w-auto !py-2 !px-3.5 text-xs"
-            >
-              <ArrowLeftOnRectangleIcon className="h-4 w-4 mr-1.5" />
-              {t('exitPortal')}
-            </Button>
-          </div>
-        </div>
-        <StudentDashboard portalContext={{ user: portalUser, onExit: handleExitPortal }} />
-      </div>
+      <PortalProvider
+        value={{
+          isPortalAccess: true,
+          user: portalUser,
+          student: context.student,
+          admin: context.admin,
+          onExit: handleExitPortal,
+          exitLoading,
+        }}
+      >
+        <StudentLayout>
+          <Outlet />
+        </StudentLayout>
+      </PortalProvider>
     );
   }
 
@@ -152,8 +167,8 @@ const PortalAccess = () => {
           <p className="text-sm text-gray-600 dark:text-gray-400 leading-relaxed">
             {t('portalAccessEnded')}
           </p>
-          <Button variant="primary" onClick={closePortalTab}>
-            {t('closePortalTab')}
+          <Button variant="primary" onClick={returnToAdminPanel} loading={exitLoading}>
+            {t('backToAdmin')}
           </Button>
         </div>
       </div>
@@ -173,7 +188,7 @@ const PortalAccess = () => {
           <p className="text-sm text-gray-600 dark:text-gray-400 leading-relaxed">
             {t('portalAccessUnavailable')}
           </p>
-          <Button variant="primary" onClick={() => window.location.replace('/admin')}>
+          <Button variant="primary" onClick={returnToAdminPanel}>
             {t('backToAdmin')}
           </Button>
         </div>

@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
-import { ChevronDownIcon, UserCircleIcon, KeyIcon, ArrowLeftOnRectangleIcon } from '@heroicons/react/24/outline';
+import { ChevronDownIcon, UserCircleIcon, KeyIcon, ArrowLeftOnRectangleIcon, ArrowRightStartOnRectangleIcon } from '@heroicons/react/24/outline';
 import { useAuth } from '../../../contexts/AuthContext';
+import { usePortal } from '../../../contexts/PortalContext';
 import authService from '../../../services/auth/auth.service';
 import { getImageUrl } from '../../../utils/imageUrl';
 import { useTranslation } from '../../../hooks/useLocalization';
@@ -16,6 +17,8 @@ const StudentDropdown = () => {
   const { t } = useTranslation();
   const dropdownRef = useRef(null);
   const { user, logout } = useAuth();
+  const portal = usePortal();
+  const isPortalAccess = Boolean(portal?.isPortalAccess);
 
   const fetchProfile = async () => {
     try {
@@ -37,9 +40,10 @@ const StudentDropdown = () => {
   }, []);
 
   useEffect(() => {
+    if (isPortalAccess) return;
     // eslint-disable-next-line react-hooks/set-state-in-effect
     fetchProfile();
-  }, []);
+  }, [isPortalAccess]);
 
   const handleProfileUpdated = () => {
     fetchProfile();
@@ -60,9 +64,18 @@ const StudentDropdown = () => {
     await logout();
   };
 
-  const studentDoc = user?.student || user?.profile || null;
-  const displayName = profile?.fullName || user?.fullName || 'Student';
-  const avatarUrl = profile?.profileImage || studentDoc?.studentImage;
+  const handleExitPortal = () => {
+    setIsOpen(false);
+    if (portal?.onExit) portal.onExit();
+  };
+
+  const overlayStudentDoc = isPortalAccess ? portal.student : user?.student || user?.profile;
+  const displayName = isPortalAccess
+    ? portal.student?.fullName || portal.user?.fullName
+    : profile?.fullName || user?.fullName || 'Student';
+  const avatarUrl = isPortalAccess
+    ? portal.student?.studentImage
+    : profile?.profileImage || overlayStudentDoc?.studentImage;
   const profileImageUrl = avatarUrl ? getImageUrl(avatarUrl) : null;
   const initials = displayName
     .split(' ')
@@ -96,29 +109,40 @@ const StudentDropdown = () => {
             <p className="text-sm font-semibold text-gray-800 dark:text-white truncate">{displayName}</p>
             <div className="flex items-center gap-1 mt-0.5">
               <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 border border-blue-200 dark:border-blue-800">
-                Student
+                {isPortalAccess ? `Portal • ${portal.student?.studentId || ''}` : 'Student'}
               </span>
             </div>
           </div>
-          <button
-            className="flex items-center w-full px-4 py-2.5 text-sm text-gray-700 dark:text-gray-200 hover:bg-blue-50 dark:hover:bg-gray-700 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
-            onClick={openProfile}
-          >
-            <UserCircleIcon className="mr-2.5 h-4 w-4" /> {t('myProfile')}
-          </button>
-          <button
-            className="flex items-center w-full px-4 py-2.5 text-sm text-gray-700 dark:text-gray-200 hover:bg-blue-50 dark:hover:bg-gray-700 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
-            onClick={() => { setChangePasswordOpen(true); setIsOpen(false); }}
-          >
-            <KeyIcon className="mr-2.5 h-4 w-4" /> {t('changePassword')}
-          </button>
-          <div className="border-t border-gray-200 dark:border-gray-700 my-1" />
-          <button
-            className="flex items-center w-full px-4 py-2.5 text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
-            onClick={handleLogout}
-          >
-            <ArrowLeftOnRectangleIcon className="mr-2.5 h-4 w-4" /> {t('logout')}
-          </button>
+          {isPortalAccess ? (
+            <button
+              className="flex items-center w-full px-4 py-2.5 text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
+              onClick={handleExitPortal}
+            >
+              <ArrowRightStartOnRectangleIcon className="mr-2.5 h-4 w-4" /> {t('exitPortal')}
+            </button>
+          ) : (
+            <>
+              <button
+                className="flex items-center w-full px-4 py-2.5 text-sm text-gray-700 dark:text-gray-200 hover:bg-blue-50 dark:hover:bg-gray-700 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
+                onClick={openProfile}
+              >
+                <UserCircleIcon className="mr-2.5 h-4 w-4" /> {t('myProfile')}
+              </button>
+              <button
+                className="flex items-center w-full px-4 py-2.5 text-sm text-gray-700 dark:text-gray-200 hover:bg-blue-50 dark:hover:bg-gray-700 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
+                onClick={() => { setChangePasswordOpen(true); setIsOpen(false); }}
+              >
+                <KeyIcon className="mr-2.5 h-4 w-4" /> {t('changePassword')}
+              </button>
+              <div className="border-t border-gray-200 dark:border-gray-700 my-1" />
+              <button
+                className="flex items-center w-full px-4 py-2.5 text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
+                onClick={handleLogout}
+              >
+                <ArrowLeftOnRectangleIcon className="mr-2.5 h-4 w-4" /> {t('logout')}
+              </button>
+            </>
+          )}
         </div>
       )}
 

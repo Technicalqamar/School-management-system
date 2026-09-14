@@ -7,6 +7,7 @@ import ExamSchedule from '../models/examSchedule.model.js';
 import SchoolSettings from '../models/schoolSettings.model.js';
 import { ApiError } from '../utils/apiError.js';
 import feeOutstandingService from './feeOutstanding.service.js';
+import portalAccessService from './portalAccess.service.js';
 
 const getCurrentAcademicYear = async () => {
   const settings = await SchoolSettings.getSettings();
@@ -38,6 +39,38 @@ const resolveStudent = async (user) => {
   }
 
   throw new ApiError(403, 'Only students can access the student dashboard');
+};
+
+// Resolves the student whose dashboard is being requested.
+//
+// Normal student sessions resolve the student from the authenticated
+// account. Administrator-authorized portal access resolves the SELECTED
+// student only from the portal access context embedded in the token
+// (accessType + accessStudentId); if the authenticated account is itself a
+// student account (portal token), it must be linked to the very same selected
+// student, so no other student's data can ever be returned.
+const resolveStudentForRequest = async (user, context = {}) => {
+  if (context.accessType === portalAccessService.ACCESS_TYPE) {
+    if (user?.role === 'student' && user.referenceId && user.referenceModel === 'Student') {
+      const linked = await Student.findById(user.referenceId);
+      if (!linked || (context.accessStudentId && String(linked.studentId) !== String(context.accessStudentId))) {
+        throw new ApiError(403, 'Portal access could not be verified for this student');
+      }
+      return linked;
+    }
+
+    if (context.accessStudentId) {
+      const selected = await Student.findOne({ studentId: context.accessStudentId });
+      if (!selected) {
+        throw new ApiError(404, 'Selected student not found');
+      }
+      return selected;
+    }
+
+    throw new ApiError(403, 'Portal access could not be verified for this student');
+  }
+
+  return resolveStudent(user);
 };
 
 const assertActiveStudent = (student) => {
@@ -82,8 +115,8 @@ const buildExam = (doc) => ({
   description: doc.description,
 });
 
-const getStudentDashboardData = async (user) => {
-  const student = await resolveStudent(user);
+const getStudentDashboardData = async (user, context = {}) => {
+  const student = await resolveStudentForRequest(user, context);
   assertActiveStudent(student);
 
   const academicYear = student.academicYear || (await getCurrentAcademicYear());

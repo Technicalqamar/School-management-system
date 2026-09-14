@@ -15,6 +15,7 @@ import FilterDropdown from '../../components/common/FilterDropdown/FilterDropdow
 import Spinner from '../../components/common/Spinner/Spinner';
 import studentHomeworkService, { STUDENT_ASSIGNMENT_STATUSES } from '../../services/student/studentHomework.service';
 import { useTranslation } from '../../hooks/useLocalization';
+import { usePortal } from '../../contexts/PortalContext';
 
 const statusBadgeCls = (status) => {
   const map = {
@@ -45,6 +46,9 @@ const formatDate = (value) => {
 
 const StudentHomework = () => {
   const { t } = useTranslation();
+  const portal = usePortal();
+  const isPortalAccess = Boolean(portal?.isPortalAccess);
+  const homeworkBase = isPortalAccess ? '/portal/access/homework' : '/student/dashboard/homework';
 
   const [assignments, setAssignments] = useState([]);
   const [subjects, setSubjects] = useState([]);
@@ -216,7 +220,7 @@ const StudentHomework = () => {
 
                 <div className="mt-auto pt-1">
                   <Link
-                    to={`/student/dashboard/homework/${item.id}`}
+                    to={`${homeworkBase}/${item.id}`}
                     state={{ assignment: item }}
                     className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-900/20 px-4 py-2.5 text-xs font-semibold text-blue-600 dark:text-blue-400 hover:bg-blue-100 dark:hover:bg-blue-900/30 transition-colors"
                   >

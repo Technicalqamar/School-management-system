@@ -26,7 +26,7 @@ const StudentDashboard = ({ portalContext }) => {
   const displayUser = isAdminPortalAccess ? portalContext.user : authUser;
 
   const [data, setData] = useState(STUDENT_DASHBOARD_EMPTY_DATA);
-  const [isLoading, setIsLoading] = useState(!isAdminPortalAccess);
+  const [isLoading, setIsLoading] = useState(true);
   const [loadFailed, setLoadFailed] = useState(false);
 
   const fetchDashboard = () =>
@@ -44,11 +44,9 @@ const StudentDashboard = ({ portalContext }) => {
       });
 
   useEffect(() => {
-    if (!isAdminPortalAccess) {
-      fetchDashboard();
-    }
+    fetchDashboard();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isAdminPortalAccess]);
+  }, []);
 
   const retry = () => {
     setLoadFailed(false);
@@ -56,7 +54,7 @@ const StudentDashboard = ({ portalContext }) => {
     fetchDashboard();
   };
 
-  const liveData = !isAdminPortalAccess ? data : STUDENT_DASHBOARD_EMPTY_DATA;
+  const liveData = data;
 
   const studentDoc = isAdminPortalAccess
     ? displayUser?.student || displayUser?.profile || null
@@ -103,9 +101,14 @@ const StudentDashboard = ({ portalContext }) => {
 
   const placeholderText = t('notAvailable');
 
+  const portalLink = (path) => (isAdminPortalAccess ? `/portal/access${path}` : `/student/dashboard${path}`);
+
   const fee = liveData.fee;
   const currentMonth = fee.currentMonth;
-  const fullyPaid = !isAdminPortalAccess ? fee.totalOutstanding <= 0 : null;
+  const fullyPaid =
+    fee.totalOutstanding === null || fee.totalOutstanding === undefined
+      ? null
+      : fee.totalOutstanding <= 0;
 
   const feeStatusLabel = (status) => {
     if (!status) return placeholderText;
@@ -157,14 +160,14 @@ const StudentDashboard = ({ portalContext }) => {
         </div>
       </section>
 
-      {/* Loading / error states for the live mode */}
-      {!isAdminPortalAccess && isLoading && (
+      {/* Loading / error states */}
+      {isLoading && (
         <div className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400">
           <span className="h-4 w-4 animate-spin rounded-full border-2 border-gray-300 border-t-blue-500" />
           {t('loadingData')}
         </div>
       )}
-      {!isAdminPortalAccess && loadFailed && !isLoading && (
+      {loadFailed && !isLoading && (
         <div className="flex items-center justify-between gap-4 rounded-2xl border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-900/20 px-5 py-4">
           <p className="text-sm text-red-700 dark:text-red-300">{t('dashboardLoadError')}</p>
           <button
@@ -232,19 +235,19 @@ const StudentDashboard = ({ portalContext }) => {
           </h2>
           <div className="flex flex-col gap-3">
             <QuickAccessLink
-              to="/student/dashboard/homework"
+              to={portalLink('/homework')}
               label={t('viewHomework')}
               icon={<ClipboardDocumentListIcon className="h-5 w-5" />}
               accent="bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 border-blue-200 dark:border-blue-800"
             />
             <QuickAccessLink
-              to="/student/dashboard/fees"
+              to={portalLink('/fees')}
               label={t('viewFees')}
               icon={<BanknotesIcon className="h-5 w-5" />}
               accent="bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800"
             />
             <QuickAccessLink
-              to="/student/dashboard/examination"
+              to={portalLink('/examination')}
               label={t('viewExaminations')}
               icon={<AcademicCapIcon className="h-5 w-5" />}
               accent="bg-violet-50 dark:bg-violet-900/20 text-violet-600 dark:text-violet-400 border-violet-200 dark:border-violet-800"
@@ -314,7 +317,7 @@ const StudentDashboard = ({ portalContext }) => {
               {t('homeworkAssignments')}
             </h2>
             <Link
-              to="/student/dashboard/homework"
+              to={portalLink('/homework')}
               className="ml-auto inline-flex items-center gap-1 text-xs font-medium text-blue-600 dark:text-blue-400 hover:underline"
             >
               {t('view')} <ArrowRightIcon className="h-3.5 w-3.5" />
@@ -367,7 +370,7 @@ const StudentDashboard = ({ portalContext }) => {
               {t('upcomingExaminations')}
             </h2>
             <Link
-              to="/student/dashboard/examination"
+              to={portalLink('/examination')}
               className="ml-auto inline-flex items-center gap-1 text-xs font-medium text-blue-600 dark:text-blue-400 hover:underline"
             >
               {t('view')} <ArrowRightIcon className="h-3.5 w-3.5" />

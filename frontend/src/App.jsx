@@ -27,6 +27,7 @@ import StudentAssignmentDetail from './pages/student/StudentAssignmentDetail';
 import StudentFees from './pages/student/StudentFees';
 import StudentModulePlaceholder from './pages/student/StudentModulePlaceholder';
 import PortalAccess from './pages/portal/PortalAccess';
+import PortalDashboard from './pages/portal/PortalDashboard';
 import AdminLayout from './layouts/AdminLayout';
 import TeacherLayout from './layouts/TeacherLayout';
 import StudentLayout from './layouts/StudentLayout';
@@ -156,7 +157,13 @@ function AppContent() {
           </Route>
         </Route>
 
-        <Route path="/portal/access" element={<PortalAccess />} />
+        <Route path="/portal/access" element={<PortalAccess />}>
+          <Route index element={<PortalDashboard />} />
+          <Route path="homework" element={<StudentHomework />} />
+          <Route path="homework/:assignmentId" element={<StudentAssignmentDetail />} />
+          <Route path="fees" element={<StudentFees />} />
+          <Route path="examination" element={<StudentModulePlaceholder module="examination" />} />
+        </Route>
 
         <Route path="/" element={<IndexRedirect />} />
         <Route path="*" element={<Navigate to="/admin/login" replace />} />

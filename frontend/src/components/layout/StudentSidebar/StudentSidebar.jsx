@@ -3,21 +3,26 @@ import { XMarkIcon, Bars3Icon, HomeIcon, ClipboardDocumentListIcon, BanknotesIco
 import useSchoolBranding from '../../../hooks/useSchoolBranding';
 import { getImageUrl } from '../../../utils/imageUrl';
 import { useTranslation } from '../../../hooks/useLocalization';
+import { usePortal } from '../../../contexts/PortalContext';
 
 const StudentSidebar = ({ isOpen, toggleSidebar }) => {
   const { t } = useTranslation();
   const { schoolBranding } = useSchoolBranding();
+  const portal = usePortal();
+  const isPortalAccess = Boolean(portal?.isPortalAccess);
   const logoUrl = schoolBranding?.adminPanelLogo ? getImageUrl(schoolBranding.adminPanelLogo) : null;
   const portalName = schoolBranding?.schoolName || 'Student Portal';
   const navItemBase =
     'flex items-center transition-all duration-200 rounded-lg text-gray-600 dark:text-gray-400 hover:bg-blue-50 dark:hover:bg-gray-700 hover:text-blue-600 dark:hover:text-blue-400';
   const navItemActive = 'bg-blue-500 text-white shadow-md';
 
+  const base = isPortalAccess ? '/portal/access' : '/student/dashboard';
+
   const navItems = [
-    { to: '/student/dashboard', end: true, label: t('dashboard'), icon: HomeIcon },
-    { to: '/student/dashboard/homework', end: false, label: t('homeworkAssignments'), icon: ClipboardDocumentListIcon },
-    { to: '/student/dashboard/fees', end: false, label: t('fees'), icon: BanknotesIcon },
-    { to: '/student/dashboard/examination', end: false, label: t('examination'), icon: AcademicCapIcon },
+    { to: base, end: true, label: t('dashboard'), icon: HomeIcon },
+    { to: `${base}/homework`, end: false, label: t('homeworkAssignments'), icon: ClipboardDocumentListIcon },
+    { to: `${base}/fees`, end: false, label: t('fees'), icon: BanknotesIcon },
+    { to: `${base}/examination`, end: false, label: t('examination'), icon: AcademicCapIcon },
   ];
 
   return (
