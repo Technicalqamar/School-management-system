@@ -2,8 +2,12 @@ import Timetable from '../models/timetable.model.js';
 import Class from '../models/class.model.js';
 import Teacher from '../models/teacher.model.js';
 import Subject from '../models/subject.model.js';
+import SchoolSettings from '../models/schoolSettings.model.js';
+import ClassTeacherAssignment from '../models/classTeacherAssignment.model.js';
 import AuditLog from '../models/auditLog.model.js';
 import { ApiError } from '../utils/apiError.js';
+
+const ACADEMIC_YEAR_REGEX = /^\d{4}$/;
 
 const timeToMinutes = (t) => {
   const [h, m] = t.split(':').map(Number);
@@ -14,27 +18,26 @@ const rangesOverlap = (aStart, aEnd, bStart, bEnd) => {
   return timeToMinutes(aStart) < timeToMinutes(bEnd) && timeToMinutes(bStart) < timeToMinutes(aEnd);
 };
 
+const getCurrentAcademicYear = async () => {
+  const settings = await SchoolSettings.getSettings();
+  if (settings?.currentAcademicYear && ACADEMIC_YEAR_REGEX.test(String(settings.currentAcademicYear))) {
+    return String(settings.currentAcademicYear);
+  }
+  return String(new Date().getFullYear());
+};
+
+const validateYear = (value, label = 'academicYear') => {
+  const trimmed = String(value ?? '').trim();
+  if (!ACADEMIC_YEAR_REGEX.test(trimmed)) {
+    throw new ApiError(400, `${label} must be a valid year (e.g. 2026)`);
+  }
+  return trimmed;
+};
+
 const validateClassExists = async (classId) => {
   const cls = await Class.findById(classId).populate('assignedSubjects');
   if (!cls) throw new ApiError(404, 'Class not found');
   return cls;
-};
-
-const validateTeachersExist = async (periods) => {
-  const teacherIds = periods
-    .filter((p) => p.type === 'teaching' && p.teacherId)
-    .map((p) => p.teacherId);
-
-  if (teacherIds.length === 0) return;
-
-  const found = await Teacher.find({ _id: { $in: teacherIds } }).select('_id');
-  const foundIds = new Set(found.map((t) => t._id.toString()));
-
-  for (const id of teacherIds) {
-    if (!foundIds.has(id.toString())) {
-      throw new ApiError(400, `Teacher with ID ${id} not found`);
-    }
-  }
 };
 
 const getAvailableSubjectsForClass = async (classId) => {
@@ -52,6 +55,27 @@ const getAvailableSubjectsForClass = async (classId) => {
 };
 
 const getAvailableTeachersForSubject = async (subjectId) => {
+  const assignmentTeachers = await ClassTeacherAssignment.find({
+    subject: subjectId,
+  })
+    .populate({ path: 'teacher', select: 'fullName status' })
+    .lean();
+
+  const fromAssignments = (assignmentTeachers || [])
+    .map((a) => a.teacher)
+    .filter((teacher) => teacher && teacher.status === 'Active')
+    .map((teacher) => ({ id: teacher._id, name: teacher.fullName }));
+
+  if (fromAssignments.length > 0) {
+    const seen = new Set();
+    return fromAssignments.filter((t) => {
+      const key = String(t.id);
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  }
+
   const teachers = await Teacher.find({ assignedSubjects: subjectId, status: 'Active' })
     .select('fullName')
     .lean();
@@ -62,66 +86,78 @@ const getAvailableTeachersForSubject = async (subjectId) => {
   }));
 };
 
+/**
+ * Source of truth: Class Management (ClassTeacherAssignment: Class + Teacher + Subject).
+ * A teaching period is only valid when the exact (class, subjectId, teacherId) combination
+ * is actually assigned in Class Management for that class.
+ */
 const validateTimetableAssignments = async (periods, classId) => {
-  const cls = await Class.findById(classId).populate({
-    path: 'assignedSubjects',
-    select: 'subjectName',
-  });
+  const cls = await Class.findById(classId)
+    .populate({ path: 'assignedSubjects', select: 'subjectName' })
+    .lean();
 
   if (!cls) throw new ApiError(404, 'Class not found');
 
-  const classSubjectIds = new Set(cls.assignedSubjects.map((s) => s._id.toString()));
+  const classSubjectIds = new Set((cls.assignedSubjects || []).map((s) => s._id.toString()));
   const subjectNames = {};
-  for (const s of cls.assignedSubjects) {
+  for (const s of cls.assignedSubjects || []) {
     subjectNames[s._id.toString()] = s.subjectName;
   }
 
   const teachingPeriods = periods.filter((p) => p.type === 'teaching');
 
   const teacherIds = [...new Set(teachingPeriods.map((p) => p.teacherId?.toString()).filter(Boolean))];
-  const teachers = await Teacher.find({ _id: { $in: teacherIds } }).populate({
-    path: 'assignedSubjects',
-    select: 'subjectName',
-  }).lean();
-  const teacherMap = {};
-  for (const t of teachers) {
-    teacherMap[t._id.toString()] = {
-      name: t.fullName,
-      subjectSet: new Set(t.assignedSubjects.map((s) => s._id.toString())),
-    };
-  }
+  const subjectIds = [...new Set(teachingPeriods.map((p) => p.subjectId?.toString()).filter(Boolean))];
+
+  const [teachers, subjects, assignments] = await Promise.all([
+    Teacher.find({ _id: { $in: teacherIds } }).select('_id fullName').lean(),
+    Subject.find({ _id: { $in: subjectIds } }).select('_id subjectName').lean(),
+    ClassTeacherAssignment.find({
+      class: classId,
+      teacher: { $in: teacherIds },
+      subject: { $in: subjectIds },
+    })
+      .select('teacher subject')
+      .lean(),
+  ]);
+
+  const teacherName = new Map(teachers.map((t) => [t._id.toString(), t.fullName || String(t._id)]));
+  const subjectName = new Map(subjects.map((s) => [s._id.toString(), s.subjectName || String(s._id)]));
+  const validCombos = new Set((assignments || []).map((a) => `${a.teacher.toString()}:${a.subject.toString()}`));
 
   for (const p of teachingPeriods) {
     const subjectId = p.subjectId?.toString();
     const teacherId = p.teacherId?.toString();
 
     if (!classSubjectIds.has(subjectId)) {
-      const name = subjectNames[subjectId] || subjectId;
-      throw new ApiError(400, `${name} is not assigned to the selected class`);
+      throw new ApiError(400, `${subjectName.get(subjectId) || subjectId} is not assigned to the selected class`);
     }
 
-    const teacher = teacherMap[teacherId];
-    if (!teacher) {
+    if (!teacherName.has(teacherId)) {
       throw new ApiError(400, `Teacher with ID ${teacherId} not found`);
     }
 
-    if (!teacher.subjectSet.has(subjectId)) {
-      throw new ApiError(400, `${teacher.name} is not assigned to teach ${subjectNames[subjectId] || subjectId}`);
+    if (!validCombos.has(`${teacherId}:${subjectId}`)) {
+      throw new ApiError(
+        400,
+        `${teacherName.get(teacherId)} is not assigned to teach ${subjectName.get(subjectId) || subjectId} in ${cls.className} for this academic year`,
+      );
     }
   }
 };
 
-const checkConflicts = async (periods, classId, excludeTimetableId) => {
+const checkConflicts = async (periods, classId, excludeTimetableId, academicYear) => {
   const conflicts = [];
   const teachingPeriods = periods.filter((p) => p.type === 'teaching');
 
   // --- Teacher Conflict ---
-  // Find all timetables (excluding current) that share any teacher
+  // Find all timetables (excluding current, same academic year) that share any teacher
   const teacherIds = [...new Set(teachingPeriods.map((p) => p.teacherId?.toString()).filter(Boolean))];
 
   if (teacherIds.length > 0) {
     const otherTimetables = await Timetable.find({
       _id: { $ne: excludeTimetableId || null },
+      academicYear,
       'periods.teacherId': { $in: teacherIds },
       'periods.type': 'teaching',
     })
@@ -195,6 +231,21 @@ const checkConflicts = async (periods, classId, excludeTimetableId) => {
     }
   }
 
+  // --- Duplicate schedule guard ---
+  // Same Class + Subject + Teacher must not be scheduled twice in the same period slot.
+  const slotKeys = new Set();
+  for (const p of teachingPeriods) {
+    const key = `${p.periodNo}:${p.startTime}-${p.endTime}:${p.subjectId?.toString()}:${p.teacherId?.toString()}`;
+    if (slotKeys.has(key)) {
+      conflicts.push({
+        type: 'DUPLICATE_SCHEDULE',
+        message: `Duplicate schedule detected for ${(subjectMap[p.subjectId?.toString()] || p.subjectId)} during period ${p.periodNo} (${p.startTime} - ${p.endTime}) in the same class timetable`,
+      });
+      break;
+    }
+    slotKeys.add(key);
+  }
+
   const warnings = [];
   for (const [sid, count] of Object.entries(subjectCount)) {
     if (count >= 5) {
@@ -209,16 +260,17 @@ const checkConflicts = async (periods, classId, excludeTimetableId) => {
 const createTimetable = async (data, userId) => {
   const { academicYear, classId, periods, periodStartTime, periodEndTime } = data;
 
+  const resolvedAcademicYear = validateYear(academicYear || (await getCurrentAcademicYear()));
+
   await validateClassExists(classId);
-  await validateTeachersExist(periods);
   await validateTimetableAssignments(periods, classId);
 
-  const existing = await Timetable.findOne({ academicYear, classId });
+  const existing = await Timetable.findOne({ academicYear: resolvedAcademicYear, classId });
   if (existing) {
     throw new ApiError(409, 'A timetable already exists for this class and academic year');
   }
 
-  const { conflicts, warnings } = await checkConflicts(periods, classId);
+  const { conflicts, warnings } = await checkConflicts(periods, classId, null, resolvedAcademicYear);
 
   if (conflicts.length > 0) {
     throw new ApiError(409, 'Timetable conflicts detected', conflicts);
@@ -226,7 +278,7 @@ const createTimetable = async (data, userId) => {
 
   try {
     const timetable = await Timetable.create({
-      academicYear,
+      academicYear: resolvedAcademicYear,
       classId,
       periods,
       periodStartTime: periodStartTime || '',
@@ -241,7 +293,7 @@ const createTimetable = async (data, userId) => {
       entityId: timetable._id.toString(),
       entityType: 'Timetable',
       performedBy: userId,
-      details: { academicYear, classId },
+      details: { academicYear: resolvedAcademicYear, classId },
     });
 
     return { timetable, warnings };
@@ -305,7 +357,7 @@ const updateTimetable = async (id, data, userId) => {
 
   if (classId) await validateClassExists(classId);
 
-  const resolvedAcademicYear = academicYear || existing.academicYear;
+  const resolvedAcademicYear = academicYear ? validateYear(academicYear) : existing.academicYear;
   const resolvedClassId = classId || existing.classId;
 
   if (academicYear || classId) {
@@ -323,9 +375,8 @@ const updateTimetable = async (id, data, userId) => {
   const updateFields = {};
 
   if (periods) {
-    await validateTeachersExist(periods);
     await validateTimetableAssignments(periods, resolvedClassId);
-    const result = await checkConflicts(periods, resolvedClassId, id);
+    const result = await checkConflicts(periods, resolvedClassId, id, resolvedAcademicYear);
     if (result.conflicts.length > 0) {
       throw new ApiError(409, 'Timetable conflicts detected', result.conflicts);
     }
@@ -333,7 +384,7 @@ const updateTimetable = async (id, data, userId) => {
     updateFields.periods = periods;
   }
 
-  if (academicYear) updateFields.academicYear = academicYear;
+  if (academicYear) updateFields.academicYear = resolvedAcademicYear;
   if (classId) updateFields.classId = classId;
   if (periodStartTime !== undefined) updateFields.periodStartTime = periodStartTime;
   if (periodEndTime !== undefined) updateFields.periodEndTime = periodEndTime;

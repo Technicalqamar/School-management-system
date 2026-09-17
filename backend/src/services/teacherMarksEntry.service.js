@@ -10,6 +10,7 @@ import Mark from '../models/mark.model.js';
 import SchoolSettings from '../models/schoolSettings.model.js';
 import { ApiError } from '../utils/apiError.js';
 import markService from './mark.service.js';
+import { getTeacherScope, getTeacherClassScope } from './teacherScope.service.js';
 
 const TEACHER_EXAM_TYPES = ['Mid Term', 'Final Term'];
 
@@ -79,13 +80,6 @@ const resolveAssignedContext = async (user, { className, subjectId }) => {
 
   const academicYear = await getCurrentAcademicYear();
 
-  const teacherSubjectIds = (teacher.assignedSubjects || []).map((id) => id.toString());
-  const teacherSubjectSet = new Set(teacherSubjectIds);
-
-  if (subjectId && !teacherSubjectSet.has(String(subjectId))) {
-    throw new ApiError(403, 'You are not assigned to this subject.');
-  }
-
   const cls = await Class.findOne({
     className,
     academicYear,
@@ -102,13 +96,17 @@ const resolveAssignedContext = async (user, { className, subjectId }) => {
   const classSubjectIds = (cls.assignedSubjects || []).map((s) => s._id.toString());
   const classSubjectSet = new Set(classSubjectIds);
 
-  if (subjectId && !classSubjectSet.has(String(subjectId))) {
-    throw new ApiError(403, 'This subject is not assigned to the selected class.');
-  }
+  const { teacherSubjectIds, teacherSubjectSet } = await getTeacherClassScope(teacher, cls);
 
-  const isAssigned = classSubjectIds.some((id) => teacherSubjectSet.has(id));
+  if (subjectId) {
+    if (!classSubjectSet.has(String(subjectId))) {
+      throw new ApiError(403, 'This subject is not assigned to the selected class.');
+    }
 
-  if (!isAssigned) {
+    if (!teacherSubjectSet.has(String(subjectId))) {
+      throw new ApiError(403, 'You are not assigned to this subject for this class.');
+    }
+  } else if (teacherSubjectIds.length === 0) {
     throw new ApiError(403, 'You are not assigned to this class.');
   }
 
@@ -132,23 +130,13 @@ const getMyExams = async (user) => {
 
   const academicYear = await getCurrentAcademicYear();
 
-  const teacherSubjectIds = (teacher.assignedSubjects || []).map((id) => id.toString());
-  const teacherSubjectSet = new Set(teacherSubjectIds);
+  const scope = await getTeacherScope(teacher, academicYear);
 
-  if (teacherSubjectIds.length === 0) {
-    return { exams: [] };
+  if (scope.length === 0) {
+    return { exams: [], classes: [] };
   }
 
-  const classes = await Class.find({
-    academicYear,
-    status: 'Active',
-    isDeleted: { $ne: true },
-    assignedSubjects: { $in: teacherSubjectIds },
-  })
-    .populate({ path: 'assignedSubjects', select: 'subjectName subjectCode' })
-    .lean();
-
-  const classNames = (classes || []).map((c) => c.className);
+  const classNames = (scope || []).map((c) => c.className);
 
   const exams = await Exam.find({
     academicYear,
@@ -169,17 +157,11 @@ const getMyExams = async (user) => {
       classes: exam.classes || [],
       status: exam.status,
     })),
-    classes: (classes || []).map((cls) => ({
-      classId: cls._id,
+    classes: (scope || []).map((cls) => ({
+      classId: cls.classId,
       className: cls.className,
       academicYear: cls.academicYear,
-      subjects: (cls.assignedSubjects || [])
-        .filter((s) => teacherSubjectSet.has(String(s._id)))
-        .map((s) => ({
-          id: s._id,
-          subjectName: s.subjectName,
-          subjectCode: s.subjectCode || '',
-        })),
+      subjects: cls.subjects,
     })),
   };
 };

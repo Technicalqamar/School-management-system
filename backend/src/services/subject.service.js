@@ -176,57 +176,6 @@ const getClassAssignmentAcademicYears = async () => {
   return years.sort();
 };
 
-const assignSubjectsToTeacher = async (teacherId, subjectIds) => {
-  const teacher = await Teacher.findOne({ teacherId });
-
-  if (!teacher) {
-    throw new ApiError(404, 'Teacher not found');
-  }
-
-  if (!Array.isArray(subjectIds)) {
-    throw new ApiError(400, 'subjectIds must be an array');
-  }
-
-  const validSubjects = await Subject.find({ _id: { $in: subjectIds } });
-
-  if (validSubjects.length !== subjectIds.length) {
-    throw new ApiError(400, 'One or more subjects not found');
-  }
-
-  const currentIds = (teacher.assignedSubjects || []).map((id) => id.toString());
-  const desiredIds = subjectIds.map((id) => id.toString());
-
-  const toAdd = desiredIds.filter((id) => !currentIds.includes(id));
-  const toRemove = currentIds.filter((id) => !desiredIds.includes(id));
-
-  if (toAdd.length === 0 && toRemove.length === 0) {
-    throw new ApiError(409, 'No changes detected');
-  }
-
-  teacher.assignedSubjects = desiredIds;
-  await teacher.save();
-
-  await updateAssignmentCounts();
-
-  return { teacher, added: toAdd.length, removed: toRemove.length };
-};
-
-const getTeacherAssignments = async (teacherId) => {
-  const teacher = await Teacher.findOne({ teacherId }).populate('assignedSubjects');
-
-  if (!teacher) {
-    throw new ApiError(404, 'Teacher not found');
-  }
-
-  const allSubjects = await Subject.find().lean();
-
-  return {
-    teacher,
-    assignedSubjects: teacher.assignedSubjects || [],
-    allSubjects,
-  };
-};
-
 const updateAssignmentCounts = async () => {
   const allSubjects = await Subject.find();
 
@@ -252,6 +201,4 @@ export default {
   assignSubjectsToClass,
   getClassAssignments,
   getClassAssignmentAcademicYears,
-  assignSubjectsToTeacher,
-  getTeacherAssignments,
 };

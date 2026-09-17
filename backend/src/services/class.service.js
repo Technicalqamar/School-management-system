@@ -1,6 +1,6 @@
 import Class from '../models/class.model.js';
 import Student from '../models/student.model.js';
-import Teacher from '../models/teacher.model.js';
+import classTeacherService from './classTeacher.service.js';
 import { ApiError } from '../utils/apiError.js';
 
 const createClass = async (data) => {
@@ -154,16 +154,21 @@ const getClassDetails = async (classId) => {
 
   const { className, academicYear, assignedSubjects } = classInfo;
 
-  const [totalStudents, students, teachers] = await Promise.all([
+  const [totalStudents, students, teacherAssignments] = await Promise.all([
     Student.countDocuments(classMembershipFilter(className, academicYear)),
     Student.find(classMembershipFilter(className, academicYear)).select('studentImage studentId fullName status').sort({ fullName: 1 }),
-    Teacher.find({ assignedSubjects: { $in: assignedSubjects } }).select('teacherImage teacherId fullName status'),
+    classTeacherService.getClassTeacherAssignments(classId),
   ]);
 
   const subjects = assignedSubjects.map((s) => ({
     _id: s._id,
     subjectName: s.subjectName,
     subjectCode: s.subjectCode,
+  }));
+
+  const teachers = teacherAssignments.teacherAssignments.map((entry) => ({
+    ...entry.teacher,
+    subjects: entry.subjects,
   }));
 
   return {
@@ -175,9 +180,11 @@ const getClassDetails = async (classId) => {
     },
     totalStudents,
     totalSubjects: assignedSubjects.length,
-    totalTeachers: teachers.length,
+    totalTeachers: teacherAssignments.totalTeachers,
     subjects,
     teachers,
+    teacherAssignments: teacherAssignments.teacherAssignments,
+    classSubjects: teacherAssignments.classSubjects,
     students,
   };
 };

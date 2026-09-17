@@ -1,9 +1,9 @@
 import Teacher from '../models/teacher.model.js';
 import Admin from '../models/admin.model.js';
-import Class from '../models/class.model.js';
 import Student from '../models/student.model.js';
 import SchoolSettings from '../models/schoolSettings.model.js';
 import { ApiError } from '../utils/apiError.js';
+import { getTeacherScope } from './teacherScope.service.js';
 
 const classMembershipFilter = (className, academicYear) => ({
   $or: [
@@ -60,40 +60,22 @@ const getMyClasses = async (user) => {
 
   const academicYear = await getCurrentAcademicYear();
 
-  const teacherSubjectIds = (teacher.assignedSubjects || []).map((id) => id.toString());
-  const teacherSubjectSet = new Set(teacherSubjectIds);
+  const scope = await getTeacherScope(teacher, academicYear);
 
-  if (teacherSubjectIds.length === 0) {
+  if (scope.length === 0) {
     return { classes: [] };
   }
 
-  const classes = await Class.find({
-    academicYear,
-    status: 'Active',
-    isDeleted: { $ne: true },
-    assignedSubjects: { $in: teacherSubjectIds },
-  })
-    .populate({ path: 'assignedSubjects', select: 'subjectName subjectCode' })
-    .lean();
-
   const classesResult = await Promise.all(
-    classes.map(async (cls) => {
-      const studentCount = await Student.countDocuments(classMembershipFilter(cls.className, cls.academicYear));
-
-      const subjectList = (cls.assignedSubjects || []).filter((subject) =>
-        teacherSubjectSet.has(subject._id.toString()),
-      );
+    scope.map(async (entry) => {
+      const studentCount = await Student.countDocuments(classMembershipFilter(entry.className, entry.academicYear));
 
       return {
-        classId: cls._id,
-        className: cls.className,
-        academicYear: cls.academicYear,
-        status: cls.status,
-        subjects: subjectList.map((subject) => ({
-          id: subject._id,
-          subjectName: subject.subjectName,
-          subjectCode: subject.subjectCode || '',
-        })),
+        classId: entry.classId,
+        className: entry.className,
+        academicYear: entry.academicYear,
+        status: entry.status,
+        subjects: entry.subjects,
         totalStudents: studentCount,
       };
     }),

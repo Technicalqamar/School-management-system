@@ -8,6 +8,7 @@ import Mark from '../models/mark.model.js';
 import Student from '../models/student.model.js';
 import SchoolSettings from '../models/schoolSettings.model.js';
 import { ApiError } from '../utils/apiError.js';
+import { getTeacherClassScope } from './teacherScope.service.js';
 
 const TEACHER_EXAM_TYPES = ['Mid Term', 'Final Term'];
 
@@ -103,13 +104,6 @@ const resolveAssignedContext = async (user, { className, subjectId }) => {
 
   const academicYear = await getCurrentAcademicYear();
 
-  const teacherSubjectIds = (teacher.assignedSubjects || []).map((id) => id.toString());
-  const teacherSubjectSet = new Set(teacherSubjectIds);
-
-  if (!teacherSubjectSet.has(String(subjectId))) {
-    throw new ApiError(403, 'You are not assigned to this subject.');
-  }
-
   const cls = await Class.findOne({
     className,
     academicYear,
@@ -130,10 +124,10 @@ const resolveAssignedContext = async (user, { className, subjectId }) => {
     throw new ApiError(403, 'This subject is not assigned to the selected class.');
   }
 
-  const isAssigned = classSubjectIds.some((id) => teacherSubjectSet.has(id));
+  const { teacherSubjectIds, teacherSubjectSet } = await getTeacherClassScope(teacher, cls);
 
-  if (!isAssigned) {
-    throw new ApiError(403, 'You are not assigned to this class.');
+  if (!teacherSubjectSet.has(String(subjectId))) {
+    throw new ApiError(403, 'You are not assigned to this subject for this class.');
   }
 
   return {

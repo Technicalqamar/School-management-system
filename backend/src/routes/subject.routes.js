@@ -8,8 +8,6 @@ import {
   assignSubjectsToClass,
   getClassAssignments,
   getClassAssignmentYears,
-  assignSubjectsToTeacher,
-  getTeacherAssignments,
 } from '../controllers/subject.controller.js';
 import { validateCreateSubject, validateUpdateSubject, validateAssignSubjectsToClass } from '../validations/subject.validation.js';
 import { protect } from '../middlewares/auth.middleware.js';
@@ -44,20 +42,6 @@ router.get(
   protect,
   authorize('admin'),
   getClassAssignmentYears,
-);
-
-router.post(
-  '/assign-teacher',
-  protect,
-  authorize('admin'),
-  assignSubjectsToTeacher,
-);
-
-router.get(
-  '/assign-teacher',
-  protect,
-  authorize('admin'),
-  getTeacherAssignments,
 );
 
 router.get(

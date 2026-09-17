@@ -5,6 +5,7 @@ import Class from '../models/class.model.js';
 import Student from '../models/student.model.js';
 import SchoolSettings from '../models/schoolSettings.model.js';
 import { ApiError } from '../utils/apiError.js';
+import { getTeacherClassScope } from './teacherScope.service.js';
 
 const classMembershipFilter = (className, academicYear) => ({
   $or: [
@@ -63,26 +64,27 @@ const getClassStudents = async (user, { classId, search }) => {
     throw new ApiError(400, 'Invalid class ID');
   }
 
+  const academicYear = await getCurrentAcademicYear();
+
   const cls = await Class.findById(classId)
-    .populate({ path: 'assignedSubjects', select: 'subjectName subjectCode' })
+    .select('className academicYear status isDeleted assignedSubjects')
     .lean();
 
   if (!cls) {
     throw new ApiError(404, 'Class not found');
   }
 
-  const academicYear = await getCurrentAcademicYear();
-
   if (cls.academicYear !== academicYear) {
     throw new ApiError(403, 'You can only view students for the current academic year.');
   }
 
-  const teacherSubjectIds = (teacher.assignedSubjects || []).map((id) => id.toString());
-  const classSubjectIds = (cls.assignedSubjects || []).map((s) => s._id.toString());
+  if (cls.status !== 'Active' || cls.isDeleted) {
+    throw new ApiError(403, 'This class is not active.');
+  }
 
-  const isAssigned = teacherSubjectIds.some((id) => classSubjectIds.includes(id));
+  const { teacherSubjectIds } = await getTeacherClassScope(teacher, cls);
 
-  if (!isAssigned) {
+  if (teacherSubjectIds.length === 0) {
     throw new ApiError(403, 'You are not assigned to this class.');
   }
 

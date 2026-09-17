@@ -5,7 +5,7 @@ import Modal from '../../../common/Modal/Modal';
 import ConfirmationModal from '../../../common/ConfirmationModal/ConfirmationModal';
 import { TYPE_OPTIONS, validatePeriods, isTimetableFormValid, getFirstError, hasOverlapError } from '../../../../utils/timetableValidation';
 import { useTranslation } from '../../../../hooks/useLocalization';
-import teacherService from '../../../../services/teacher/teacher.service';
+import classService from '../../../../services/class/class.service';
 import timetableService from '../../../../services/timetable/timetable.service';
 
 const labelCls = 'block text-[10px] font-medium text-gray-500 dark:text-gray-400 mb-0.5';
@@ -57,38 +57,38 @@ const TimetableEditorModal = ({ timetableData, onSave, onClose, onRefresh }) => 
     }))
   );
 
-  const [teachers, setTeachers] = useState([]);
-  const [loadingTeachers, setLoadingTeachers] = useState(true);
-  const [subjects, setSubjects] = useState([]);
+  const [assignmentData, setAssignmentData] = useState(null);
   const [saving, setSaving] = useState(false);
   const [deleteConfirmTarget, setDeleteConfirmTarget] = useState(null);
 
+  // Class Management is the source of truth for valid Class + Subject + Teacher combos.
   useEffect(() => {
     if (!classId) return;
-    timetableService.getClassSubjects(classId)
+    classService.getClassTeacherAssignments(classId)
       .then((res) => {
-        if (res?.data?.subjects) setSubjects(res.data.subjects);
+        if (res?.data?.data) setAssignmentData(res.data.data);
       })
       .catch(() => toast.error(t('failedToLoad')));
   }, [classId]);
 
-  useEffect(() => {
-    teacherService.getAllTeachers({ limit: 100, status: 'Active' })
-      .then((res) => {
-        const list = res?.data?.teachers || res?.data?.data?.teachers || [];
-        setTeachers(Array.isArray(list) ? list : []);
-      })
-      .catch(() => toast.error(t('failedToLoad')))
-      .finally(() => setLoadingTeachers(false));
-  }, []);
+  const subjectOptions = useMemo(() =>
+    (assignmentData?.classSubjects || []).map((s) => ({ id: String(s._id), name: s.subjectName || String(s._id) })),
+  [assignmentData]);
 
-  const getAvailableSubjectsForTeacher = useCallback((teacherId) => {
-    if (!teacherId || !teachers.length || !subjects.length) return [];
-    const teacher = teachers.find((t) => t._id === teacherId);
-    if (!teacher || !teacher.assignedSubjects || !Array.isArray(teacher.assignedSubjects)) return [];
-    const teacherSubjectIds = new Set(teacher.assignedSubjects.map((id) => id.toString()));
-    return subjects.filter((s) => teacherSubjectIds.has(s.id));
-  }, [teachers, subjects]);
+  const availableTeachers = useMemo(() => {
+    const map = {};
+    (assignmentData?.teacherAssignments || []).forEach(({ teacher, subjects }) => {
+      const tid = String(teacher?._id);
+      if (!tid) return;
+      const tname = teacher?.fullName || tid;
+      (subjects || []).forEach((s) => {
+        const sid = String(s._id);
+        if (!map[sid]) map[sid] = [];
+        if (!map[sid].some((x) => x.id === tid)) map[sid].push({ id: tid, name: tname });
+      });
+    });
+    return map;
+  }, [assignmentData]);
 
   const updatePeriod = useCallback((id, field, value) => {
     setPeriods((prev) =>
@@ -96,8 +96,8 @@ const TimetableEditorModal = ({ timetableData, onSave, onClose, onRefresh }) => 
         if (p.id !== id) return p;
         if (field === 'type' && value === 'Break') return { ...p, type: 'Break', teacher: '', subject: '' };
         if (field === 'type' && value === 'Teaching') return { ...p, type: 'Teaching' };
-        if (field === 'teacher' && value !== p.teacher) {
-          return { ...p, teacher: value, subject: '' };
+        if (field === 'subject' && value !== p.subject) {
+          return { ...p, subject: value, teacher: '' };
         }
         return { ...p, [field]: value };
       })
@@ -146,13 +146,21 @@ const TimetableEditorModal = ({ timetableData, onSave, onClose, onRefresh }) => 
       if (msg) toast.error(msg);
       return;
     }
+    const invalidCombo = periods.some((p) => {
+      if (p.type !== 'Teaching' || !p.subject || !p.teacher) return false;
+      return !(availableTeachers[p.subject] || []).some((x) => String(x.id) === String(p.teacher));
+    });
+    if (invalidCombo) {
+      toast.error('Selected teacher is not assigned to teach this subject in this class.');
+      return;
+    }
     setSaving(true);
     try {
       await onSave(periods);
     } finally {
       setSaving(false);
     }
-  }, [periods, fieldErrors, onSave]);
+  }, [periods, fieldErrors, availableTeachers, onSave]);
 
   const displayName = timetableData.className || (timetableData.classId?.className) || '';
 
@@ -163,8 +171,8 @@ const TimetableEditorModal = ({ timetableData, onSave, onClose, onRefresh }) => 
           const isBreak = period.type === 'Break';
           const errs = fieldErrors[period.id];
           const hasTimeErr = errs && (errs.startTime || errs.endTime || errs.timeOverlap);
-          const availableSubjects = getAvailableSubjectsForTeacher(period.teacher);
-          const subjectDisabled = isBreak || !period.teacher || availableSubjects.length === 0;
+          const periodTeachers = availableTeachers[period.subject] || [];
+          const teacherDisabled = isBreak || !period.subject || periodTeachers.length === 0;
 
           return (
             <div
@@ -214,14 +222,14 @@ const TimetableEditorModal = ({ timetableData, onSave, onClose, onRefresh }) => 
                     <select
                       value={period.teacher}
                       onChange={(e) => updatePeriod(period.id, 'teacher', e.target.value)}
-                      disabled={isBreak}
-                      className={getSelectCls(errs, 'teacher', isBreak)}
+                      disabled={teacherDisabled}
+                      className={getSelectCls(errs, 'teacher', teacherDisabled)}
                     >
                       <option value="" disabled>
-                        {loadingTeachers ? t('loading') : t('select')}
+                        {!period.subject ? t('select') : periodTeachers.length === 0 ? t('noData') : t('select')}
                       </option>
-                      {teachers.map((t) => (
-                        <option key={t._id} value={t._id}>{t.fullName}</option>
+                      {periodTeachers.map((tm) => (
+                        <option key={tm.id} value={tm.id}>{tm.name}</option>
                       ))}
                     </select>
                     {errs?.teacher && <p className={errTextCls}>{errs.teacher}</p>}
@@ -231,18 +239,16 @@ const TimetableEditorModal = ({ timetableData, onSave, onClose, onRefresh }) => 
                     <select
                       value={period.subject}
                       onChange={(e) => updatePeriod(period.id, 'subject', e.target.value)}
-                      disabled={subjectDisabled}
-                      className={getSelectCls(errs, 'subject', subjectDisabled)}
+                      disabled={isBreak}
+                      className={getSelectCls(errs, 'subject', isBreak)}
                     >
-                      <option value="" disabled>
-                        {!period.teacher ? t('select') : availableSubjects.length === 0 ? t('noData') : t('select')}
-                      </option>
-                      {availableSubjects.map((s) => (
+                      <option value="" disabled>{t('select')}</option>
+                      {subjectOptions.map((s) => (
                         <option key={s.id} value={s.id}>{s.name}</option>
                       ))}
                     </select>
-                    {period.teacher && availableSubjects.length === 0 && (
-                      <p className={errTextCls}>{t('noData')}</p>
+                    {period.subject && periodTeachers.length === 0 && (
+                      <p className={errTextCls}>No teacher is assigned for this subject in this class.</p>
                     )}
                     {errs?.subject && <p className={errTextCls}>{errs.subject}</p>}
                   </div>

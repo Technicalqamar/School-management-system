@@ -85,7 +85,6 @@ const AllSubjects = ({ onViewDetails, onEditSubject, selectedSubject, onCloseVie
     { key: 'subjectName', label: t('subjectName') },
     { key: 'subjectCode', label: t('subjectCode') },
     { key: 'classes', label: t('classSubjectAssignment') },
-    { key: 'teachers', label: t('teacherSubjectAssignment') },
     { key: 'status', label: t('status') },
     { key: 'actions', label: t('actions'), className: 'text-right' },
   ];
@@ -102,7 +101,6 @@ const AllSubjects = ({ onViewDetails, onEditSubject, selectedSubject, onCloseVie
       </td>
       <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-300">{subject.subjectCode}</td>
       <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-300">{subject.assignedClassesCount || 0}</td>
-      <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-300">{subject.assignedTeachersCount || 0}</td>
       <td className="px-4 py-3">
         <StatusBadge status={subject.status} />
       </td>

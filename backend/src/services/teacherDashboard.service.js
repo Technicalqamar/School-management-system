@@ -1,10 +1,10 @@
 import Teacher from '../models/teacher.model.js';
-import Class from '../models/class.model.js';
 import Student from '../models/student.model.js';
 import Timetable from '../models/timetable.model.js';
 import Admin from '../models/admin.model.js';
 import SchoolSettings from '../models/schoolSettings.model.js';
 import { ApiError } from '../utils/apiError.js';
+import { getTeacherScope } from './teacherScope.service.js';
 
 const classMembershipFilter = (className, academicYear) => ({
   $or: [
@@ -69,52 +69,38 @@ const getTeacherDashboardData = async (user) => {
 
   const academicYear = await getCurrentAcademicYear();
 
-  const teacherSubjectIds = (teacher.assignedSubjects || []).map((id) => id.toString());
-  const teacherSubjectSet = new Set(teacherSubjectIds);
+  const [scope, teacherTimetables] = await Promise.all([
+    getTeacherScope(teacher, academicYear),
+    Timetable.find({
+      academicYear,
+      'periods.teacherId': teacher._id,
+      'periods.type': 'teaching',
+    })
+      .populate({ path: 'classId', select: 'className' })
+      .populate({ path: 'periods.subjectId', select: 'subjectName' })
+      .lean(),
+  ]);
 
   const myClasses = [];
   const todayClasses = [];
 
-  if (teacherSubjectIds.length > 0) {
-    const [classes, teacherTimetables] = await Promise.all([
-      Class.find({
-        academicYear,
-        status: 'Active',
-        isDeleted: { $ne: true },
-        assignedSubjects: { $in: teacherSubjectIds },
-      })
-        .populate({ path: 'assignedSubjects', select: 'subjectName subjectCode' })
-        .lean(),
-      Timetable.find({
-        academicYear,
-        'periods.teacherId': teacher._id,
-        'periods.type': 'teaching',
-      })
-        .populate({ path: 'classId', select: 'className' })
-        .populate({ path: 'periods.subjectId', select: 'subjectName' })
-        .lean(),
-    ]);
-
+  if (scope.length > 0) {
     const classStudentCounts = await Promise.all(
-      classes.map(async (cls) => {
-        const count = await Student.countDocuments(classMembershipFilter(cls.className, cls.academicYear));
-        return { className: cls.className, count };
+      scope.map(async (entry) => {
+        const count = await Student.countDocuments(classMembershipFilter(entry.className, entry.academicYear));
+        return { className: entry.className, count };
       }),
     );
 
     const studentCountByClass = new Map(classStudentCounts.map((row) => [row.className, row.count]));
 
-    for (const cls of classes) {
-      const teacherSubjects = (cls.assignedSubjects || []).filter((subject) =>
-        teacherSubjectSet.has(subject._id.toString()),
-      );
+    for (const entry of scope) {
+      const studentCount = studentCountByClass.get(entry.className) || 0;
 
-      const studentCount = studentCountByClass.get(cls.className) || 0;
-
-      for (const subject of teacherSubjects) {
+      for (const subject of entry.subjects) {
         myClasses.push({
-          classId: cls._id,
-          className: cls.className,
+          classId: entry.classId,
+          className: entry.className,
           subject: subject.subjectName,
           subjectCode: subject.subjectCode || '',
           totalStudents: studentCount,

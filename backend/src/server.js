@@ -27,7 +27,7 @@ process.on('uncaughtException', (err) => {
 });
 
 const server = await connectDB()
-  .then(() => {
+  .then(async () => {
     const srv = app.listen(PORT, () => {
       console.log(`🚀 Server running on port ${PORT}`);
     });

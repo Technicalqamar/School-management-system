@@ -89,7 +89,8 @@ const CreateTimetable = () => {
   const [teachers, setTeachers] = useState([]);
   const [allSubjects, setAllSubjects] = useState([]);
   const [classIdMap, setClassIdMap] = useState({});
-  const [classSubjectsMap, setClassSubjectsMap] = useState({});
+  const classIdMapRef = useRef({});
+  const [classOptions, setClassOptions] = useState({});
   const [savingPeriodId, setSavingPeriodId] = useState(null);
   const [loading, setLoading] = useState(true);
   const [showDraftDialog, setShowDraftDialog] = useState(false);
@@ -101,11 +102,16 @@ const CreateTimetable = () => {
   const initialLoadDone = useRef(false);
   const draftTimer = useRef(null);
   const draftHandled = useRef(false);
+  const loadGenRef = useRef(0);
+  const dirtyRef = useRef(false);
+  const [periodsFor, setPeriodsFor] = useState({ group: null, year: null });
 
   const groupClasses = useMemo(() => {
     if (!selectedGroup) return [];
     return GROUPS[selectedGroup]?.classes || [];
   }, [selectedGroup]);
+
+  const canLoad = Boolean(selectedGroup && selectedYear && Object.keys(classIdMap).length > 0);
 
   // Data loading
   useEffect(() => {
@@ -113,15 +119,13 @@ const CreateTimetable = () => {
       .then((res) => {
         const list = res?.data?.classes || [];
         const idMap = {};
-        const subjMap = {};
         list.forEach((c) => {
           if (c.className) {
             idMap[c.className] = c._id;
-            subjMap[c.className] = new Set((c.assignedSubjects || []).map((id) => id.toString()));
           }
         });
         setClassIdMap(idMap);
-        setClassSubjectsMap(subjMap);
+        classIdMapRef.current = idMap;
       })
       .catch(() => toast.error(t('failedToLoad')));
   }, []);
@@ -143,14 +147,52 @@ const CreateTimetable = () => {
       .catch(() => {});
   }, []);
 
+  // Class Management is the source of truth for valid Class + Subject + Teacher combos.
+  useEffect(() => {
+    if (!selectedGroup || !selectedYear || Object.keys(classIdMap).length === 0) return;
+    let cancelled = false;
+    (async () => {
+      const map = {};
+      for (const name of groupClasses) {
+        const cid = classIdMap[name];
+        if (!cid) continue;
+        try {
+          const res = await classService.getClassTeacherAssignments(cid);
+          const d = res?.data?.data || {};
+          const teacherToSubjects = {};
+          const teacherNames = {};
+          (d.teacherAssignments || []).forEach(({ teacher, subjects }) => {
+            const tid = String(teacher?._id);
+            if (!tid) return;
+            teacherNames[tid] = teacher?.fullName || tid;
+            teacherToSubjects[tid] = (subjects || []).map((s) => String(s._id));
+          });
+          map[cid] = {
+            subjects: (d.classSubjects || []).map((s) => ({ id: String(s._id), name: s.subjectName || String(s._id) })),
+            teacherToSubjects,
+            teacherNames,
+          };
+        } catch { /* keep empty for this class */ }
+      }
+      if (!cancelled && Object.keys(map).length > 0) setClassOptions(map);
+    })();
+    return () => { cancelled = true; };
+  }, [selectedGroup, selectedYear, classIdMap, groupClasses]);
+
   // Load from server
   const loadFromServer = useCallback(async () => {
-    if (!selectedGroup || !selectedYear || Object.keys(classIdMap).length === 0) return;
+    const idMap = classIdMapRef.current;
+    if (!selectedGroup || !selectedYear || Object.keys(idMap).length === 0) {
+      setLoading(false);
+      return;
+    }
+    const gen = ++loadGenRef.current;
     setLoading(true);
+    dirtyRef.current = false;
     try {
       const classTts = {};
       for (const name of groupClasses) {
-        const cid = classIdMap[name];
+        const cid = idMap[name];
         if (!cid) continue;
         try {
           const res = await timetableService.getTimetableByClass(cid);
@@ -160,9 +202,11 @@ const CreateTimetable = () => {
         } catch { /* empty */ }
       }
 
+      if (gen !== loadGenRef.current) return;
       if (Object.keys(classTts).length === 0) {
         setPeriods([]);
         setEditingIds(new Set());
+        setPeriodsFor({ group: selectedGroup, year: selectedYear });
         return;
       }
 
@@ -209,12 +253,14 @@ const CreateTimetable = () => {
           saved: true,
         };
       });
+      if (gen !== loadGenRef.current) return;
       setPeriods(loaded);
       setEditingIds(new Set());
+      setPeriodsFor({ group: selectedGroup, year: selectedYear });
     } finally {
-      setLoading(false);
+      if (gen === loadGenRef.current) setLoading(false);
     }
-  }, [selectedGroup, selectedYear, classIdMap, groupClasses]);
+  }, [selectedGroup, selectedYear, groupClasses]);
 
   // Draft check
   const checkDraft = useCallback(() => {
@@ -224,22 +270,29 @@ const CreateTimetable = () => {
     try { return JSON.parse(raw); } catch { return null; }
   }, [selectedYear, selectedGroup]);
 
+  const checkDraftRef = useRef(checkDraft);
+  const loadFromServerRef = useRef(loadFromServer);
   useEffect(() => {
-    if (!selectedGroup || !selectedYear || Object.keys(classIdMap).length === 0) return;
+    checkDraftRef.current = checkDraft;
+    loadFromServerRef.current = loadFromServer;
+  });
+
+  useEffect(() => {
+    if (!selectedGroup || !selectedYear || Object.keys(classIdMapRef.current).length === 0) return;
     if (initialLoadDone.current) {
-      loadFromServer();
+      loadFromServerRef.current();
       return;
     }
-    const draft = checkDraft();
+    const draft = checkDraftRef.current();
     if (draft && draft.periods?.length > 0 && !draftHandled.current) {
       setPendingDraft(draft);
       setShowDraftDialog(true);
       setLoading(false);
     } else {
-      loadFromServer();
+      loadFromServerRef.current();
     }
     initialLoadDone.current = true;
-  }, [selectedGroup, selectedYear, classIdMap, groupClasses, checkDraft, loadFromServer, refreshKey]);
+  }, [selectedGroup, selectedYear, refreshKey]);
 
   const handleContinueDraft = () => {
     if (pendingDraft) {
@@ -247,6 +300,8 @@ const CreateTimetable = () => {
       setPeriodStartTime(pendingDraft.periodStartTime || '');
       setPeriodEndTime(pendingDraft.periodEndTime || '');
       setEditingIds(new Set());
+      dirtyRef.current = true;
+      setPeriodsFor({ group: selectedGroup, year: selectedYear });
     }
     setShowDraftDialog(false);
     setPendingDraft(null);
@@ -265,7 +320,8 @@ const CreateTimetable = () => {
   // Auto-save draft
   useEffect(() => {
     if (!selectedYear || !selectedGroup) return;
-    if (periods.length === 0) return;
+    if (periodsFor.group !== selectedGroup || periodsFor.year !== selectedYear) return;
+    if (!dirtyRef.current || periods.length === 0) return;
     if (draftTimer.current) clearTimeout(draftTimer.current);
     draftTimer.current = setTimeout(() => {
       localStorage.setItem(DRAFT_KEY(selectedYear, selectedGroup), JSON.stringify({ periods, periodStartTime, periodEndTime }));
@@ -273,12 +329,57 @@ const CreateTimetable = () => {
     return () => {
       if (draftTimer.current) clearTimeout(draftTimer.current);
     };
-  }, [periods, periodStartTime, periodEndTime, selectedYear, selectedGroup]);
+  }, [periods, periodStartTime, periodEndTime, selectedYear, selectedGroup, periodsFor]);
+
+  // Derived data helpers (Class Management is the source of truth)
+  const getClassSubjectOptions = useCallback((className) => {
+    const opts = classOptions[classIdMap[className]];
+    return opts?.subjects || [];
+  }, [classOptions, classIdMap]);
+
+  const getAvailableTeachers = useCallback((className, subjectId) => {
+    if (!subjectId) return [];
+    const opts = classOptions[classIdMap[className]];
+    if (!opts) return [];
+    const sid = String(subjectId);
+    const list = [];
+    for (const [tid, sids] of Object.entries(opts.teacherToSubjects)) {
+      if (sids.includes(sid)) list.push({ id: tid, name: opts.teacherNames[tid] || tid });
+    }
+    return list;
+  }, [classOptions, classIdMap]);
+
+  const getTeacherName = useCallback((id) => {
+    if (!id) return '';
+    const t = teachers.find((t) => t._id === id);
+    return t?.fullName || id;
+  }, [teachers]);
+
+  const getSubjectName = useCallback((id) => {
+    if (!id) return '';
+    const s = allSubjects.find((s) => s._id === id);
+    return s?.subjectName || s?.name || id;
+  }, [allSubjects]);
 
   // Validate a single period (used by handleSavePeriod)
   const getPeriodErrors = useCallback((period) => {
-    return validatePeriod(period, periodStartTime, periodEndTime, t);
-  }, [periodStartTime, periodEndTime, t]);
+    const errors = validatePeriod(period, periodStartTime, periodEndTime, t);
+
+    if (period.type === 'teaching' && period.cells) {
+      Object.entries(period.cells).forEach(([className, cell]) => {
+        if (cell?.subject && cell?.teacher) {
+          const availTeachers = getAvailableTeachers(className, cell.subject);
+          if (!availTeachers.some((x) => String(x.id) === String(cell.teacher))) {
+            if (!errors.cellErrors) errors.cellErrors = {};
+            if (!errors.cellErrors[className]) errors.cellErrors[className] = {};
+            errors.cellErrors[className].teacher = `${getTeacherName(cell.teacher)} is not assigned to teach ${getSubjectName(cell.subject)} in ${className}`;
+          }
+        }
+      });
+    }
+
+    return errors;
+  }, [periodStartTime, periodEndTime, t, getAvailableTeachers, getTeacherName, getSubjectName]);
 
   // Save one period card independently
   const handleSavePeriod = useCallback(async (periodId) => {
@@ -346,6 +447,7 @@ const CreateTimetable = () => {
 
   // Handlers
   const addPeriod = useCallback(() => {
+    dirtyRef.current = true;
     const newPeriod = {
       id: Date.now() + Math.random(),
       periodNo: periods.length + 1,
@@ -360,6 +462,7 @@ const CreateTimetable = () => {
   }, [periods.length, groupClasses]);
 
   const removePeriod = useCallback((id) => {
+    dirtyRef.current = true;
     setPeriods((prev) => prev.filter((p) => p.id !== id).map((p, i) => ({ ...p, periodNo: i + 1 })));
     setEditingIds((prev) => {
       const next = new Set(prev);
@@ -379,6 +482,7 @@ const CreateTimetable = () => {
   }, [removePeriod]);
 
   const updatePeriod = useCallback((periodId, field, value) => {
+    dirtyRef.current = true;
     setPeriodErrors((prev) => { const next = { ...prev }; delete next[periodId]; return next; });
     setPeriods((prev) => prev.map((p) => {
       if (p.id !== periodId) return p;
@@ -396,14 +500,15 @@ const CreateTimetable = () => {
   }, [groupClasses]);
 
   const updateCell = useCallback((periodId, className, field, value) => {
+    dirtyRef.current = true;
     setPeriodErrors((prev) => { const next = { ...prev }; delete next[periodId]; return next; });
     setPeriods((prev) => prev.map((p) => {
       if (p.id !== periodId) return p;
       const cells = { ...p.cells };
-      if (field === 'teacher') {
-        cells[className] = { teacher: value, subject: '' };
+      if (field === 'subject') {
+        cells[className] = { subject: value, teacher: '' };
       } else {
-        cells[className] = { ...cells[className], [field]: value };
+        cells[className] = { ...cells[className], teacher: value };
       }
       return { ...p, cells };
     }));
@@ -424,8 +529,8 @@ const CreateTimetable = () => {
   // Group/year change
   const handleGroupChange = useCallback((g) => {
     if (selectedGroup === g) return;
+    loadGenRef.current += 1;
     setSelectedGroup(g);
-    setPeriods([]);
     setEditingIds(new Set());
     setConfirmDeleteId(null);
     setPeriodErrors({});
@@ -436,8 +541,9 @@ const CreateTimetable = () => {
   }, [selectedGroup]);
 
   const handleYearChange = useCallback((value) => {
+    if (selectedYear === value) return;
+    loadGenRef.current += 1;
     setSelectedYear(value);
-    setPeriods([]);
     setEditingIds(new Set());
     setConfirmDeleteId(null);
     setPeriodErrors({});
@@ -445,30 +551,7 @@ const CreateTimetable = () => {
     draftHandled.current = false;
     setPendingDraft(null);
     setLoading(true);
-  }, [setSelectedYear]);
-
-  // Derived data helpers
-  const getAvailableSubjects = useCallback((className, teacherId) => {
-    if (!teacherId || !teachers.length || !allSubjects.length) return [];
-    const teacher = teachers.find((t) => t._id === teacherId);
-    if (!teacher?.assignedSubjects) return [];
-    const tSet = new Set(teacher.assignedSubjects.map((id) => id.toString()));
-    const cSet = classSubjectsMap[className];
-    if (!cSet) return [];
-    return allSubjects.filter((s) => tSet.has(s._id) && cSet.has(s._id));
-  }, [teachers, allSubjects, classSubjectsMap]);
-
-  const getTeacherName = useCallback((id) => {
-    if (!id) return '';
-    const t = teachers.find((t) => t._id === id);
-    return t?.fullName || id;
-  }, [teachers]);
-
-  const getSubjectName = useCallback((id) => {
-    if (!id) return '';
-    const s = allSubjects.find((s) => s._id === id);
-    return s?.subjectName || s?.name || id;
-  }, [allSubjects]);
+  }, [setSelectedYear, selectedYear]);
 
   // Styles
   const selectCls = 'appearance-none w-full px-2 py-1.5 rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-xs text-gray-700 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all cursor-pointer';
@@ -561,32 +644,39 @@ const CreateTimetable = () => {
           const cellErr = err?.cellErrors?.[name];
 
           if (isEditable) {
-            const availSubjects = getAvailableSubjects(name, cell.teacher);
-            const noSubjectFile = cell.teacher && availSubjects.length === 0;
+            const classSubjects = getClassSubjectOptions(name);
+            const availTeachers = getAvailableTeachers(name, cell.subject);
+            const subjectNotChosen = !cell.subject;
+            const noTeacherForSubject = cell.subject && availTeachers.length === 0;
 
             return (
-              <tr key={name} className={`transition-colors ${noSubjectFile ? 'bg-amber-50/40 dark:bg-amber-900/5' : ''}`}>
+              <tr key={name} className={`transition-colors ${noTeacherForSubject ? 'bg-amber-50/40 dark:bg-amber-900/5' : ''}`}>
                 <td className="px-3 py-2 align-middle"><span className="text-[11px] font-medium text-gray-700 dark:text-gray-200">{name}</span></td>
                 <td className="px-3 py-2 align-middle">
-                  <select value={cell.teacher} onChange={(e) => updateCell(period.id, name, 'teacher', e.target.value)} className={`${selectCls} max-w-[200px]`}>
-                    <option value="" disabled>{t('select')}</option>
-                    {teachers.map((t) => (
-                      <option key={t._id} value={t._id}>{t.fullName}</option>
+                  <select
+                    value={cell.teacher}
+                    onChange={(e) => updateCell(period.id, name, 'teacher', e.target.value)}
+                    disabled={subjectNotChosen || noTeacherForSubject}
+                    className={`${selectCls} max-w-[200px]`}
+                  >
+                    <option value="" disabled>
+                      {subjectNotChosen ? t('select') : noTeacherForSubject ? t('noData') : t('select')}
+                    </option>
+                    {availTeachers.map((tm) => (
+                      <option key={tm.id} value={tm.id}>{tm.name}</option>
                     ))}
                   </select>
                   {cellErr?.teacher && <p className="text-[9px] text-red-500 dark:text-red-400 mt-0.5">{cellErr.teacher}</p>}
                 </td>
                 <td className="px-3 py-2 align-middle">
-                  <select value={cell.subject} onChange={(e) => updateCell(period.id, name, 'subject', e.target.value)} disabled={!cell.teacher || availSubjects.length === 0} className={`${selectCls} max-w-[200px]`}>
-                    <option value="" disabled>
-                      {!cell.teacher ? t('select') : availSubjects.length === 0 ? t('noData') : t('select')}
-                    </option>
-                    {availSubjects.map((s) => (
-                      <option key={s._id} value={s._id}>{s.subjectName || s.name || s._id}</option>
+                  <select value={cell.subject} onChange={(e) => updateCell(period.id, name, 'subject', e.target.value)} className={`${selectCls} max-w-[200px]`}>
+                    <option value="" disabled>{t('select')}</option>
+                    {classSubjects.map((cs) => (
+                      <option key={cs.id} value={cs.id}>{cs.name}</option>
                     ))}
                   </select>
-                  {noSubjectFile && <p className="text-[9px] text-amber-600 dark:text-amber-400 mt-0.5">No matching subject is assigned to both this Teacher and this Class.</p>}
-                  {cellErr?.subject && !noSubjectFile && <p className="text-[9px] text-red-500 dark:text-red-400 mt-0.5">{cellErr.subject}</p>}
+                  {noTeacherForSubject && <p className="text-[9px] text-amber-600 dark:text-amber-400 mt-0.5">No teacher is assigned for this subject in {name} (Class Management).</p>}
+                  {cellErr?.subject && !noTeacherForSubject && <p className="text-[9px] text-red-500 dark:text-red-400 mt-0.5">{cellErr.subject}</p>}
                 </td>
               </tr>
             );
@@ -684,7 +774,7 @@ const CreateTimetable = () => {
             </button>
           </div>
         </div>
-        {loading && (
+        {loading && canLoad && periods.length === 0 && (
           <p className="text-[11px] text-gray-400 dark:text-gray-500 mt-3">{t('loading')}</p>
         )}
         {!loading && selectedGroup && selectedYear && periods.length > 0 && (
@@ -716,7 +806,7 @@ const CreateTimetable = () => {
         </div>
       )}
 
-      {periods.length === 0 && !loading && (
+      {periods.length === 0 && (
         <CardSection title={t('timetable')}>
           <div className="py-12 flex flex-col items-center justify-center text-center">
             <svg className="h-14 w-14 text-gray-300 dark:text-gray-600 mb-4" fill="none" viewBox="0 0 24 24" strokeWidth={1} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>

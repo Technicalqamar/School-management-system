@@ -12,15 +12,9 @@ const SubjectCard = ({ subject, onView, onEdit, onDelete }) => {
         <StatusBadge status={subject.status} />
       </div>
 
-      <div className="grid grid-cols-2 gap-3 pt-3 border-t border-gray-100 dark:border-gray-700">
-        <div>
-          <p className="text-xs text-gray-500 dark:text-gray-400">Assigned Classes</p>
-          <p className="text-sm font-medium text-gray-900 dark:text-white mt-0.5">{subject.assignedClassesCount || 0}</p>
-        </div>
-        <div>
-          <p className="text-xs text-gray-500 dark:text-gray-400">Assigned Teachers</p>
-          <p className="text-sm font-medium text-gray-900 dark:text-white mt-0.5">{subject.assignedTeachersCount || 0}</p>
-        </div>
+      <div className="pt-3 border-t border-gray-100 dark:border-gray-700">
+        <p className="text-xs text-gray-500 dark:text-gray-400">Assigned Classes</p>
+        <p className="text-sm font-medium text-gray-900 dark:text-white mt-0.5">{subject.assignedClassesCount || 0}</p>
       </div>
 
       <div className="mt-auto pt-3 border-t border-gray-100 dark:border-gray-700 flex justify-center">

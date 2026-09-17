@@ -5,6 +5,7 @@ import Class from '../models/class.model.js';
 import Assignment from '../models/assignment.model.js';
 import SchoolSettings from '../models/schoolSettings.model.js';
 import { ApiError } from '../utils/apiError.js';
+import { getTeacherClassScope } from './teacherScope.service.js';
 
 const VALID_STATUSES = ['Pending', 'In Progress', 'Completed', 'Overdue'];
 const MONTH_STRING_REGEX = /^\d{4}-\d{2}-\d{2}$/;
@@ -105,15 +106,15 @@ const assertAssignmentTarget = async (teacher, { classId, subjectId }) => {
     throw new ApiError(403, 'This class is not active for assignments.');
   }
 
-  const teacherSubjectIds = (teacher.assignedSubjects || []).map((id) => id.toString());
+  const { teacherSubjectSet } = await getTeacherClassScope(teacher, cls);
 
-  if (!teacherSubjectIds.includes(subjectId)) {
+  if (!teacherSubjectSet.has(String(subjectId))) {
     throw new ApiError(403, 'You are not assigned to this subject, so you cannot create assignments for it.');
   }
 
-  const classSubjectIds = (cls.assignedSubjects || []).map((id) => id.toString());
+  const classSubjectIds = (cls.assignedSubjects || []).map((id) => String(id._id || id));
 
-  if (!classSubjectIds.includes(subjectId)) {
+  if (!classSubjectIds.includes(String(subjectId))) {
     throw new ApiError(400, 'This subject is not assigned to the selected class.');
   }
 

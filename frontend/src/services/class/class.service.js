@@ -25,6 +25,21 @@ const classService = {
     const response = await api.get(`/classes/${id}/details`);
     return response.data;
   },
+
+  getClassTeacherAssignments: async (id) => {
+    const response = await api.get(`/classes/${id}/teacher-assignments`);
+    return response.data;
+  },
+
+  assignTeacherSubject: async (id, data) => {
+    const response = await api.post(`/classes/${id}/teacher-assignments`, data);
+    return response.data;
+  },
+
+  removeTeacherSubject: async (id, teacherId, subjectId) => {
+    const response = await api.delete(`/classes/${id}/teacher-assignments/${teacherId}/${subjectId}`);
+    return response.data;
+  },
 };
 
 export default classService;

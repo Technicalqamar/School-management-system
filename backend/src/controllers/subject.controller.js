@@ -86,32 +86,6 @@ const getClassAssignmentYears = asyncHandler(async (req, res) => {
   });
 });
 
-const assignSubjectsToTeacher = asyncHandler(async (req, res) => {
-  const { teacherId, subjectIds } = req.body;
-  const result = await subjectService.assignSubjectsToTeacher(teacherId, subjectIds);
-
-  return res.status(200).json({
-    success: true,
-    message: 'Teacher subject assignments updated successfully',
-    data: {
-      teacher: result.teacher,
-      added: result.added,
-      removed: result.removed,
-    },
-  });
-});
-
-const getTeacherAssignments = asyncHandler(async (req, res) => {
-  const { teacherId } = req.query;
-  const result = await subjectService.getTeacherAssignments(teacherId);
-
-  return res.status(200).json({
-    success: true,
-    message: 'Teacher assignments fetched successfully',
-    data: result,
-  });
-});
-
 export {
   createSubject,
   getAllSubjects,
@@ -121,6 +95,4 @@ export {
   assignSubjectsToClass,
   getClassAssignments,
   getClassAssignmentYears,
-  assignSubjectsToTeacher,
-  getTeacherAssignments,
 };

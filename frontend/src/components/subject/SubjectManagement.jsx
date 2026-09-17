@@ -3,11 +3,10 @@ import { useTranslation } from '../../hooks/useLocalization';
 import AllSubjects from './tabs/AllSubjects';
 import AddSubject from './tabs/AddSubject';
 import ClassSubjectAssignment from './tabs/ClassSubjectAssignment';
-import TeacherSubjectAssignment from './tabs/TeacherSubjectAssignment';
 
 const SubjectManagement = () => {
   const { t } = useTranslation();
-  const tabs = [t('allSubjects'), t('addSubject'), t('classSubjectAssignment'), t('teacherSubjectAssignment')];
+  const tabs = [t('allSubjects'), t('addSubject'), t('classSubjectAssignment')];
   const [activeTab, setActiveTab] = useState(tabs[0]);
   const [selectedSubject, setSelectedSubject] = useState(null);
   const [editingSubject, setEditingSubject] = useState(null);
@@ -16,7 +15,6 @@ const SubjectManagement = () => {
     [tabs[0]]: AllSubjects,
     [tabs[1]]: AddSubject,
     [tabs[2]]: ClassSubjectAssignment,
-    [tabs[3]]: TeacherSubjectAssignment,
   };
 
   const ActiveComponent = tabComponents[activeTab];

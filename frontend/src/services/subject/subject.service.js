@@ -40,16 +40,6 @@ const subjectService = {
     const response = await api.get('/subjects/assign-class/years');
     return response.data;
   },
-
-  assignSubjectsToTeacher: async (teacherId, subjectIds) => {
-    const response = await api.post('/subjects/assign-teacher', { teacherId, subjectIds });
-    return response.data;
-  },
-
-  getTeacherAssignments: async (teacherId) => {
-    const response = await api.get('/subjects/assign-teacher', { params: { teacherId } });
-    return response.data;
-  },
 };
 
 export default subjectService;
